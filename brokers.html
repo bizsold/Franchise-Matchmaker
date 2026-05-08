@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Brokers Admin</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+  <body>
+    <main class="app app-wide">
+      <section class="panel add-broker-panel">
+        <h1>Brokers Page</h1>
+        <p>Add new brokers to your master broker database.</p>
+      </section>
+
+      <section class="panel add-broker-panel">
+        <h2>Add Broker</h2>
+        <form id="broker-form">
+          <div class="row"><label for="broker-name">Broker Name</label><input id="broker-name" required /></div>
+          <div class="row"><label for="min-liquid">Min. Liquid</label><input id="min-liquid" type="number" min="0" required /></div>
+          <div class="row"><label for="min-net-worth">Min. Net Worth</label><input id="min-net-worth" type="number" min="0" required /></div>
+          <div class="row"><label for="credit">Credit</label><input id="credit" type="number" min="0" required /></div>
+          <div class="row">
+            <label for="location-mode">Location Mode</label>
+            <select id="location-mode" required>
+              <option value="us_wide">USA Wide (all states)</option>
+              <option value="us_wide_exclude">USA Wide with Exclusions</option>
+              <option value="non_registration_only">Non-Registration States Only</option>
+              <option value="include_only">Specific States Only</option>
+              <option value="canada_wide">Canada Wide (all provinces)</option>
+              <option value="canada_wide_exclude">Canada Wide with Exclusions</option>
+            </select>
+          </div>
+          <div class="row stack">
+            <label id="location-picker-label" for="location-picker">States/Provinces</label>
+            <p id="location-note" class="subtitle hidden"></p>
+            <div id="location-picker" class="location-picker hidden"></div>
+          </div>
+          <div class="row"><label for="status">Status</label><input id="status" placeholder="Example: US Citizen, Green Card, Any" /></div>
+          <div class="row"><label for="special-requests">Special Requests</label><input id="special-requests" placeholder="Industry preferences, constraints, etc." /></div>
+          <div class="row"><label for="booking-link">Booking Link</label><input id="booking-link" type="url" placeholder="https://..." required /></div>
+          <div class="row">
+            <button id="save-broker-btn" type="submit">Add Broker</button>
+            <button id="cancel-edit-btn" class="secondary hidden" type="button">Cancel Edit</button>
+          </div>
+        </form>
+        <p id="broker-form-message" class="subtitle"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Current Brokers (<span id="broker-count">0</span>)</h2>
+        <p class="subtitle">Focus list rule: Focus brokers who match criteria go to Tier 1 first. If a focus broker is booked today, they are excluded from today's results.</p>
+        <div class="row stack">
+          <label>Today's Focus List (EST)</label>
+          <div id="focus-list-today"></div>
+        </div>
+        <div class="row">
+          <button id="save-focus-list-btn" type="button">Save Focus List</button>
+        </div>
+        <div id="broker-list"></div>
+      </section>
+
+      <section class="panel">
+        <a class="button-link" href="./index.html">Back to Main</a>
+      </section>
+    </main>
+    <script src="./brokers.js" defer></script>
+  </body>
+</html>

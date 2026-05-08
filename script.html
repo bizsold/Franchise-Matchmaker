@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Script Admin</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="panel">
+        <h1>Script Admin</h1>
+        <p>Edit the scripts and qualifying questions used by the main matchmaker flow.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Script Sections</h2>
+        <div class="row stack">
+          <label for="opening-script-input">Opening Script</label>
+          <textarea id="opening-script-input" rows="10"></textarea>
+        </div>
+        <div class="row stack">
+          <label for="closing-script-input">Closing Script</label>
+          <textarea id="closing-script-input" rows="6"></textarea>
+        </div>
+        <div class="row stack">
+          <label for="handoff-script-input">Hand Off Script</label>
+          <textarea id="handoff-script-input" rows="8"></textarea>
+        </div>
+        <div class="row stack">
+          <label for="submission-link-input">Submission Link</label>
+          <input id="submission-link-input" type="url" />
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Qualifying Questions</h2>
+        <div id="questions-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Add Question</h2>
+        <div class="row stack">
+          <label for="new-question-id">Question ID</label>
+          <input id="new-question-id" placeholder="example: fundingMethod" />
+        </div>
+        <div class="row stack">
+          <label for="new-question-text">Question Text</label>
+          <textarea id="new-question-text" rows="4"></textarea>
+        </div>
+        <div class="row stack">
+          <label for="new-question-type">Question Type</label>
+          <select id="new-question-type">
+            <option value="buttons">Buttons</option>
+            <option value="number_k">Number (K)</option>
+            <option value="location">Location</option>
+          </select>
+        </div>
+        <div class="row stack" id="question-options-row">
+          <label for="new-question-options">Button Options (one per line)</label>
+          <textarea id="new-question-options" rows="5" placeholder="Example:\nNow\n1-3 months\n3-6 months"></textarea>
+        </div>
+        <div class="row">
+          <button id="add-question-btn" type="button">Add Question</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="row">
+          <button id="save-script-btn" type="button">Save Script Changes</button>
+          <span id="script-save-message" class="subtitle"></span>
+        </div>
+        <a class="button-link" href="./index.html">Back to Main</a>
+      </section>
+    </main>
+    <script src="./script.js" defer></script>
+  </body>
+</html>

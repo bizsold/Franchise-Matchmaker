@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Franchise Matchmaker</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>Franchise Matchmaker</h1>
+        <p class="subtitle">Setter workflow, strict criteria matching, and daily broker lock.</p>
+      </header>
+
+      <section class="panel" id="session-panel">
+        <h2>Session</h2>
+        <div class="row">
+          <label for="role">Mode</label>
+          <select id="role">
+            <option value="setter">Setter</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="row hidden" id="admin-code-row">
+          <label for="admin-code">Admin Code</label>
+          <input id="admin-code" name="admin-auth-code" type="password" placeholder="Enter admin code" autocomplete="new-password" />
+        </div>
+        <div class="row" id="setter-name-row">
+          <label for="setter-name">Your Name</label>
+          <input id="setter-name" type="text" placeholder="Setter first name" />
+        </div>
+        <div class="row">
+          <button id="start-session">Start</button>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="script-panel">
+        <h2>Script</h2>
+        <pre id="opening-script" class="script-text"></pre>
+        <button id="next-to-qualifying">Next</button>
+      </section>
+
+      <section class="panel hidden" id="admin-panel">
+        <h2>Admin Panel</h2>
+        <p class="subtitle">Choose an area to manage.</p>
+        <div class="row">
+          <a class="button-link" href="./brokers.html">Brokers</a>
+          <a class="button-link" href="./script.html">Script</a>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="questions-panel">
+        <h2>Qualifying Questions</h2>
+        <div id="question-container"></div>
+        <div class="row">
+          <button id="prev-question" class="secondary">Back</button>
+          <button id="next-question">Continue</button>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="results-panel">
+        <h2>Matches</h2>
+        <div id="candidate-summary"></div>
+        <h3>Tier 1: Best Matches</h3>
+        <div id="tier1"></div>
+        <h3>All Other Suitable Matches</h3>
+        <div id="tier2"></div>
+        <div id="post-match-content"></div>
+        <div class="row">
+          <button id="restart-session" class="secondary">Restart</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
