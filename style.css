@@ -279,3 +279,29 @@ td a {
 .submission-btn:focus {
   background: #1849a9;
 }
+
+/* Brokers admin: hard lock row + toggle */
+#broker-list tr.broker-row-hard-locked td {
+  background: #fef2f2;
+}
+
+#broker-list .hard-lock-btn {
+  border: 2px solid #dc2626;
+  background: #fff;
+  color: #b91c1c;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#broker-list .hard-lock-btn:hover {
+  background: #fef2f2;
+}
+
+#broker-list .hard-lock-btn.active {
+  background: #dc2626;
+  color: #fff;
+  border-color: #991b1b;
+}

@@ -128,7 +128,8 @@ function normalizeBrokerLocation(broker) {
     location_mode: locationMode,
     location_states: locationStates,
     focus_for_date: broker.focus_for_date || null,
-    focus_today: broker.focus_today === true
+    focus_today: broker.focus_today === true,
+    hard_locked: broker.hard_locked === true
   };
 }
 
@@ -345,6 +346,19 @@ class BookingStore {
       return null;
     }
   }
+
+  async fetchBrokerLocksMap() {
+    if (!this.client) return null;
+    try {
+      const { data, error } = await this.client.from("broker_locks").select("broker_name, hard_locked");
+      if (error || !Array.isArray(data)) return null;
+      const map = new Map();
+      data.forEach((row) => map.set(row.broker_name, row.hard_locked === true));
+      return map;
+    } catch (e) {
+      return null;
+    }
+  }
 }
 
 function normalizeState(input) {
@@ -417,7 +431,8 @@ function getScore(broker, lead) {
 function filterBrokers(brokers, candidate, ignoreBookingExclusion) {
   const { lead, bookedNames } = candidate;
   const bookedSet = bookedNames instanceof Set ? bookedNames : new Set(bookedNames || []);
-  let pool = brokers.filter((b) => isFinancialMatch(b, lead) && matchesLocation(b, lead.state, lead.country));
+  let pool = brokers.filter((b) => b.hard_locked !== true);
+  pool = pool.filter((b) => isFinancialMatch(b, lead) && matchesLocation(b, lead.state, lead.country));
   pool.sort((a, b) => getScore(a, lead) - getScore(b, lead));
   if (!ignoreBookingExclusion) {
     pool = pool.filter((b) => !bookedSet.has(b.name));
@@ -489,6 +504,10 @@ async function runMatching() {
   const focusMap = state.db ? await state.db.fetchBrokerFocusMap() : null;
   if (focusMap) {
     state.brokers = state.brokers.map((b) => ({ ...b, focus_today: focusMap.get(b.name) === true }));
+  }
+  const lockMap = state.db ? await state.db.fetchBrokerLocksMap() : null;
+  if (lockMap) {
+    state.brokers = state.brokers.map((b) => ({ ...b, hard_locked: lockMap.get(b.name) === true }));
   }
   state.scriptConfig = getScriptConfig();
   const leadState = normalizeState(state.answers.stateInput);

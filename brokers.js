@@ -126,6 +126,32 @@ async function persistBrokerFocusToSupabase(brokers) {
   return { ok: !error, error };
 }
 
+async function fetchBrokerLocksMap() {
+  if (!supabaseClient) return null;
+  try {
+    const { data, error } = await supabaseClient.from("broker_locks").select("broker_name, hard_locked");
+    if (error || !Array.isArray(data)) return null;
+    const map = new Map();
+    data.forEach((row) => map.set(row.broker_name, row.hard_locked === true));
+    return map;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function setBrokerHardLockInSupabase(brokerName, hardLocked) {
+  if (!supabaseClient) return false;
+  const { error } = await supabaseClient.from("broker_locks").upsert(
+    { broker_name: brokerName, hard_locked: hardLocked, updated_at: new Date().toISOString() },
+    { onConflict: "broker_name" }
+  );
+  return !error;
+}
+
+function escapeAttr(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
 async function unbookBrokerToday(brokerName) {
   if (!supabaseClient) return false;
   const todayEST = currentDateEST();
@@ -149,7 +175,8 @@ function normalizeBrokerLocation(broker) {
     location_mode: mode,
     location_states: locationStates,
     focus_for_date: broker.focus_for_date || null,
-    focus_today: broker.focus_today === true
+    focus_today: broker.focus_today === true,
+    hard_locked: broker.hard_locked === true
   };
 }
 
@@ -309,11 +336,12 @@ function fillFormForEdit(broker, index) {
 }
 
 async function renderBrokers() {
-  const todayEST = currentDateEST();
   const bookedTodayNames = await fetchBookedTodayNames();
+  const lockMap = await fetchBrokerLocksMap();
   const focusMap = await fetchBrokerFocusMap();
   const rawBrokers = readBrokers().map((b) => ({
     ...b,
+    hard_locked: lockMap ? (lockMap.get(b.name) === true) : (b.hard_locked === true),
     focus_today: focusMap ? (focusMap.get(b.name) === true) : (b.focus_today === true)
   }));
   const brokers = rawBrokers
@@ -332,8 +360,10 @@ async function renderBrokers() {
   focusListToday.innerHTML = focusedNames.length ? focusedNames.join(", ") : "<span class=\"subtitle\">No brokers selected for focus today.</span>";
 
   const rows = brokers.map(({ broker, originalIndex }) => {
+    const locked = broker.hard_locked === true;
+    const rowClass = locked ? " broker-row-hard-locked" : "";
     return `
-      <tr>
+      <tr class="${rowClass.trim()}">
         <td>${broker.name || ""}</td>
         <td>$${Number(broker.minLiquid || 0).toLocaleString()}</td>
         <td>$${Number(broker.minNetWorth || 0).toLocaleString()}</td>
@@ -344,6 +374,7 @@ async function renderBrokers() {
         <td>${broker.specialRequests || ""}</td>
         <td><a href="${broker.booking}" target="_blank" rel="noopener noreferrer">${broker.booking}</a></td>
         <td><input class="focus-today-checkbox" type="checkbox" data-index="${originalIndex}" data-broker-focus="${broker.name}" ${broker.focus_today === true ? "checked" : ""} /></td>
+        <td><button type="button" class="hard-lock-btn${locked ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Hard lock: exclude from all matching">${locked ? "🔒 Locked" : "🔒 Hard Lock"}</button></td>
         <td><input class="booked-today-indicator" type="checkbox" disabled ${bookedTodayNames.has(broker.name) ? "checked" : ""} /></td>
         <td>${bookedTodayNames.has(broker.name) ? `<button class="icon-btn unbook-btn" data-name="${broker.name}" title="Unbook">Unbook</button>` : "-"}</td>
         <td><button class="icon-btn edit-btn" data-index="${originalIndex}" title="Edit">✏️</button></td>
@@ -366,6 +397,7 @@ async function renderBrokers() {
           <th>Special Requests</th>
           <th>Booking Link</th>
           <th>Focus Today</th>
+          <th>Hard Lock</th>
           <th>Booked Today</th>
           <th>Unbook</th>
           <th>Edit</th>
@@ -405,6 +437,20 @@ async function renderBrokers() {
       const brokerName = event.currentTarget.dataset.name;
       const ok = await unbookBrokerToday(brokerName);
       message.textContent = ok ? `${brokerName} unbooked for today.` : `Unable to unbook ${brokerName}.`;
+      await renderBrokers();
+    });
+  });
+
+  document.querySelectorAll(".hard-lock-btn").forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      const brokerName = event.currentTarget.dataset.brokerName;
+      if (!brokerName) return;
+      const wasLocked = event.currentTarget.classList.contains("active");
+      const nextLocked = !wasLocked;
+      const ok = await setBrokerHardLockInSupabase(brokerName, nextLocked);
+      message.textContent = ok
+        ? `${brokerName} ${nextLocked ? "hard locked" : "unlocked"}.`
+        : `Could not update hard lock for ${brokerName}. Check Supabase broker_locks table and network.`;
       await renderBrokers();
     });
   });
