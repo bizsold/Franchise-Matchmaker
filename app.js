@@ -280,8 +280,15 @@ const el = {
   tier1: document.getElementById("tier1"),
   tier2: document.getElementById("tier2"),
   postMatchContent: document.getElementById("post-match-content"),
-  restartSession: document.getElementById("restart-session")
+  restartSession: document.getElementById("restart-session"),
+  confirmationPanel: document.getElementById("confirmation-panel"),
+  confirmationBrokerInfo: document.getElementById("confirmation-broker-info"),
+  confirmationCandidateInfo: document.getElementById("confirmation-candidate-info"),
+  startNewSession: document.getElementById("start-new-session")
 };
+
+// Establish "setter" as the initial history entry so back from confirmation lands here.
+try { history.replaceState({ view: "setter" }, ""); } catch (err) { /* ignore */ }
 
 // Prevent persisted password dots from showing in admin mode.
 el.adminCode.value = "";
@@ -553,11 +560,88 @@ async function runMatching() {
         lead_city: state.answers.city || "",
         lead_state: state.answers.stateInput || ""
       });
-      alert(`${brokerName} marked as booked for today (EST).`);
       state.bookingsToday = await state.db.fetchTodayBookings();
-      runMatching();
+      showConfirmation(brokerName);
     });
   });
+}
+
+function renderCandidateInfoTable() {
+  const a = state.answers || {};
+  const stateDisplay = normalizeState(a.stateInput || "") || a.stateInput || "—";
+  const rows = [
+    ["Setter Name", el.setterName.value ? escapeHTML(el.setterName.value) : "—"],
+    ["Liquid Capital", typeof a.liquidity === "number" ? `$${a.liquidity.toLocaleString()}` : "—"],
+    ["Net Worth", typeof a.netWorth === "number" ? `$${a.netWorth.toLocaleString()}` : "—"],
+    ["Credit Score", a.creditScore ? `${a.creditScore}+` : "—"],
+    ["Timeline", a.timeline ? escapeHTML(String(a.timeline)) : "—"],
+    ["City", a.city ? escapeHTML(a.city) : "—"],
+    ["State/Province", escapeHTML(stateDisplay)],
+    ["Country", a.country ? escapeHTML(a.country) : "—"],
+    ["Citizenship Status", a.status ? escapeHTML(String(a.status)) : "—"]
+  ];
+  return `<table><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join("")}</tbody></table>`;
+}
+
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[ch]));
+}
+
+function renderBookedBrokerTable(brokerName) {
+  const broker = (state.brokers || []).find((b) => b.name === brokerName);
+  if (!broker) {
+    return `<p>${escapeHTML(brokerName)} (broker details unavailable).</p>`;
+  }
+  const minLiquid = `$${Number(broker.minLiquid || 0).toLocaleString()}`;
+  const minNetWorth = `$${Number(broker.minNetWorth || 0).toLocaleString()}`;
+  const minCredit = `${broker.minCredit || 0}+`;
+  const booking = broker.booking || "";
+  const bookingCell = booking
+    ? `<a href="${escapeHTML(booking)}" target="_blank" rel="noopener noreferrer">${escapeHTML(booking)}</a>`
+    : "—";
+  const specialRow = broker.specialRequests
+    ? `<tr><th>Special Requests</th><td>${escapeHTML(broker.specialRequests)}</td></tr>`
+    : "";
+  return `
+    <table>
+      <thead>
+        <tr><th>Broker</th><th>Min Liquid</th><th>Min Net Worth</th><th>Credit</th><th>Booking URL</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${escapeHTML(broker.name)}</td>
+          <td>${minLiquid}</td>
+          <td>${minNetWorth}</td>
+          <td>${minCredit}</td>
+          <td>${bookingCell}</td>
+        </tr>
+      </tbody>
+    </table>
+    ${specialRow ? `<table style="margin-top:8px;"><tbody>${specialRow}</tbody></table>` : ""}
+  `;
+}
+
+function showConfirmation(brokerName) {
+  if (!el.confirmationPanel) return;
+  el.confirmationBrokerInfo.innerHTML = renderBookedBrokerTable(brokerName);
+  el.confirmationCandidateInfo.innerHTML = renderCandidateInfoTable();
+  // Hide every other panel so the confirmation is the only thing visible.
+  const sessionPanel = document.getElementById("session-panel");
+  if (sessionPanel) sessionPanel.classList.add("hidden");
+  el.scriptPanel.classList.add("hidden");
+  el.adminPanel.classList.add("hidden");
+  el.questionsPanel.classList.add("hidden");
+  el.resultsPanel.classList.add("hidden");
+  el.confirmationPanel.classList.remove("hidden");
+  // Replace (not push) so browser back skips the results page where the Booked button lives.
+  try { history.replaceState({ view: "confirmation", brokerName }, ""); } catch (err) { /* ignore */ }
+  window.scrollTo({ top: 0, behavior: "auto" });
 }
 
 function openingText(setterName) {
@@ -589,6 +673,14 @@ function resetSession() {
   el.tier1.innerHTML = "";
   el.tier2.innerHTML = "";
   el.postMatchContent.innerHTML = "";
+  if (el.confirmationPanel) {
+    el.confirmationPanel.classList.add("hidden");
+    el.confirmationBrokerInfo.innerHTML = "";
+    el.confirmationCandidateInfo.innerHTML = "";
+  }
+  const sessionPanel = document.getElementById("session-panel");
+  if (sessionPanel) sessionPanel.classList.remove("hidden");
+  window.scrollTo({ top: 0, behavior: "auto" });
 }
 
 el.role.addEventListener("change", () => {
@@ -623,6 +715,12 @@ el.startSession.addEventListener("click", async () => {
   }
   el.openingScript.textContent = openingText(el.setterName.value);
   el.scriptPanel.classList.remove("hidden");
+  // Push a "session" entry so confirmation's replaceState leaves a "setter" entry to go back to.
+  try {
+    if (!history.state || history.state.view !== "session") {
+      history.pushState({ view: "session" }, "");
+    }
+  } catch (err) { /* ignore */ }
 });
 
 el.nextToQualifying.addEventListener("click", () => {
@@ -674,4 +772,19 @@ el.nextQuestion.addEventListener("click", () => {
 
 el.restartSession.addEventListener("click", () => {
   resetSession();
+});
+
+if (el.startNewSession) {
+  el.startNewSession.addEventListener("click", () => {
+    resetSession();
+    try { history.replaceState({ view: "setter" }, ""); } catch (err) { /* ignore */ }
+  });
+}
+
+// Browser back from confirmation: return to setter name screen (never the results page).
+window.addEventListener("popstate", (event) => {
+  const view = event.state && event.state.view;
+  if (view === "setter" || !view) {
+    resetSession();
+  }
 });

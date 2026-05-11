@@ -263,3 +263,19 @@ td a {
   font-weight: 600;
   line-height: 1.45;
 }
+
+.submission-btn {
+  display: inline-block;
+  background: #175cd3;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 12px 20px;
+  border-radius: 8px;
+}
+
+.submission-btn:hover,
+.submission-btn:focus {
+  background: #1849a9;
+}
