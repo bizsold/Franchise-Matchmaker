@@ -252,3 +252,14 @@ td a {
 #broker-list td a {
   word-break: break-all;
 }
+
+.match-warning-banner {
+  background: #fff7ed;
+  border: 2px solid #ea580c;
+  color: #7c2d12;
+  padding: 14px 16px;
+  margin: 0 0 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  line-height: 1.45;
+}

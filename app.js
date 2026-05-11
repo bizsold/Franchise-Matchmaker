@@ -276,6 +276,7 @@ const el = {
   prevQuestion: document.getElementById("prev-question"),
   nextQuestion: document.getElementById("next-question"),
   candidateSummary: document.getElementById("candidate-summary"),
+  matchFallbackBanner: document.getElementById("match-fallback-banner"),
   tier1: document.getElementById("tier1"),
   tier2: document.getElementById("tier2"),
   postMatchContent: document.getElementById("post-match-content"),
@@ -401,6 +402,22 @@ function getScore(broker, lead) {
   return Math.abs(lead.liquidity - broker.minLiquid) + Math.abs(lead.netWorth - broker.minNetWorth) + Math.abs(lead.creditScore - broker.minCredit) * 1000;
 }
 
+/**
+ * @param {object[]} brokers - master roster (with focus_today already merged).
+ * @param {{ lead: object, bookedNames: Set|Iterable }} candidate - lead includes normalized state code on `state`, plus financial fields; bookedNames is today's booked broker names.
+ * @param {boolean} ignoreBookingExclusion - when false, exclude brokers booked today; when true, keep them (fallback pass).
+ */
+function filterBrokers(brokers, candidate, ignoreBookingExclusion) {
+  const { lead, bookedNames } = candidate;
+  const bookedSet = bookedNames instanceof Set ? bookedNames : new Set(bookedNames || []);
+  let pool = brokers.filter((b) => isFinancialMatch(b, lead) && matchesLocation(b, lead.state, lead.country));
+  pool.sort((a, b) => getScore(a, lead) - getScore(b, lead));
+  if (!ignoreBookingExclusion) {
+    pool = pool.filter((b) => !bookedSet.has(b.name));
+  }
+  return pool;
+}
+
 function renderQuestion() {
   const q = state.scriptConfig.questions[state.step];
   let html = `<p class="question-text"><strong>${q.text}</strong></p>`;
@@ -467,7 +484,6 @@ async function runMatching() {
     state.brokers = state.brokers.map((b) => ({ ...b, focus_today: focusMap.get(b.name) === true }));
   }
   state.scriptConfig = getScriptConfig();
-  const todayEST = currentDateEST();
   const leadState = normalizeState(state.answers.stateInput);
   const lead = {
     liquidity: state.answers.liquidity,
@@ -481,16 +497,25 @@ async function runMatching() {
     timezone: getTimezone()
   };
   const bookedNames = new Set((state.bookingsToday || []).map((row) => row.broker_name));
-  const allMatching = state.brokers
-    .filter((b) => isFinancialMatch(b, lead) && matchesLocation(b, leadState, lead.country))
-    .sort((a, b) => getScore(a, lead) - getScore(b, lead));
+  const candidate = { lead, bookedNames };
 
-  const matchingAfterExclusion = allMatching
-    .filter((b) => !bookedNames.has(b.name));
+  let eligibleBrokers = filterBrokers(state.brokers, candidate, false);
+  let bookingFallbackActive = false;
+  if (!eligibleBrokers.length) {
+    eligibleBrokers = filterBrokers(state.brokers, candidate, true);
+    bookingFallbackActive = eligibleBrokers.length > 0;
+  }
 
-  // If nothing remains after exclusion audit, ignore daily exclusion.
-  const eligibleBrokers = matchingAfterExclusion.length ? matchingAfterExclusion : allMatching;
-  const exclusionAuditIgnored = !matchingAfterExclusion.length && allMatching.length > 0;
+  if (el.matchFallbackBanner) {
+    if (bookingFallbackActive) {
+      el.matchFallbackBanner.textContent = "No available brokers found for today — showing previously booked brokers as fallback. Use with caution.";
+      el.matchFallbackBanner.classList.remove("hidden");
+    } else {
+      el.matchFallbackBanner.textContent = "";
+      el.matchFallbackBanner.classList.add("hidden");
+    }
+  }
+
   const FOCUS_LIST = state.brokers.filter(b => b.focus_today === true).map(b => b.name);
   const tier1 = eligibleBrokers.filter(b => FOCUS_LIST.includes(b.name));
   const tier2 = eligibleBrokers.filter(b => !FOCUS_LIST.includes(b.name));
@@ -510,7 +535,6 @@ async function runMatching() {
   el.tier2.innerHTML = tier2.length ? renderTable(tier2) : "";
   el.postMatchContent.innerHTML = `
     ${!eligibleBrokers.length ? `<p><strong>No matches found.</strong></p>` : ""}
-    ${exclusionAuditIgnored ? `<p><strong>Note:</strong> No suitable brokers remained after today's exclusion audit, so daily exclusion was ignored and all matching brokers are shown.</p>` : ""}
     <h3>Closing Script</h3>
     <pre class="script-text">${state.scriptConfig.closingScript.replace("[Timezone]", lead.timezone)}</pre>
     <h3>Submission Form</h3>
@@ -558,6 +582,10 @@ function resetSession() {
   el.resultsPanel.classList.add("hidden");
   el.questionContainer.innerHTML = "";
   el.candidateSummary.innerHTML = "";
+  if (el.matchFallbackBanner) {
+    el.matchFallbackBanner.textContent = "";
+    el.matchFallbackBanner.classList.add("hidden");
+  }
   el.tier1.innerHTML = "";
   el.tier2.innerHTML = "";
   el.postMatchContent.innerHTML = "";
