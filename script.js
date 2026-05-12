@@ -1,5 +1,10 @@
 const SCRIPT_STORAGE_KEY = "matchmaker-script-config-v1";
 const SCRIPT_WINDOW_NAME_PREFIX = "SCRIPT_CFG_SYNC::";
+const SUPABASE_URL = "https://ohiholwyaagawjqyocpq.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oaWhvbHd5YWFnYXdqcXlvY3BxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMzkyNzMsImV4cCI6MjA5MzgxNTI3M30.qqQmNslJASRxGuR_kpGv6-x05_erZWq52o4yUTL6qDk";
+const supabaseClient = window.supabase?.createClient
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 const DEFAULT_SCRIPT_CONFIG = {
   openingScript: `Hey [Name], this is [Your Name].
@@ -56,22 +61,49 @@ const el = {
 let config = loadConfig();
 let editingQuestionIndex = null;
 
+function normalizeConfig(parsed) {
+  if (!parsed || !Array.isArray(parsed.questions)) return null;
+  parsed.questions = parsed.questions.map((q) => {
+    if (q.id === "liquidity" || q.id === "netWorth") {
+      return { ...q, type: "number_k", options: undefined };
+    }
+    return q;
+  });
+  return parsed;
+}
+
 function loadConfig() {
   const raw = localStorage.getItem(SCRIPT_STORAGE_KEY);
   if (!raw) return structuredClone(DEFAULT_SCRIPT_CONFIG);
   try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.questions)) return structuredClone(DEFAULT_SCRIPT_CONFIG);
-    parsed.questions = parsed.questions.map((q) => {
-      if (q.id === "liquidity" || q.id === "netWorth") {
-        return { ...q, type: "number_k", options: undefined };
-      }
-      return q;
-    });
-    return parsed;
+    return normalizeConfig(JSON.parse(raw)) || structuredClone(DEFAULT_SCRIPT_CONFIG);
   } catch (err) {
     return structuredClone(DEFAULT_SCRIPT_CONFIG);
   }
+}
+
+async function fetchScriptConfigFromSupabase() {
+  if (!supabaseClient) return null;
+  try {
+    const { data, error } = await supabaseClient
+      .from("app_script")
+      .select("config")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error || !data || !data.config) return null;
+    return normalizeConfig(data.config);
+  } catch (e) {
+    return null;
+  }
+}
+
+async function persistScriptConfigToSupabase(nextConfig) {
+  if (!supabaseClient) return { ok: false, reason: "no-client" };
+  const row = { id: 1, config: nextConfig, updated_at: new Date().toISOString() };
+  const { error } = await supabaseClient
+    .from("app_script")
+    .upsert(row, { onConflict: "id" });
+  return { ok: !error, error };
 }
 
 function updateQuestionOptionsVisibility() {
@@ -196,7 +228,7 @@ el.addQuestionBtn.addEventListener("click", () => {
   renderQuestions();
 });
 
-el.saveBtn.addEventListener("click", () => {
+el.saveBtn.addEventListener("click", async () => {
   // If a question is currently being edited in the form, apply it automatically.
   if (editingQuestionIndex !== null && el.newQuestionId.value.trim() && el.newQuestionText.value.trim()) {
     const question = buildQuestionFromForm();
@@ -225,7 +257,11 @@ el.saveBtn.addEventListener("click", () => {
   } catch (err) {
     // localStorage save still works if window.name fails.
   }
-  el.saveMessage.textContent = "Script settings saved.";
+  el.saveMessage.textContent = "Saving to Supabase...";
+  const result = await persistScriptConfigToSupabase(config);
+  el.saveMessage.textContent = result.ok
+    ? "Script settings saved (live for all setters)."
+    : "Saved locally, but Supabase sync failed. Check network or that the app_script table exists.";
 });
 
 el.newQuestionType.addEventListener("change", () => {
@@ -234,3 +270,15 @@ el.newQuestionType.addEventListener("change", () => {
 
 updateQuestionOptionsVisibility();
 renderForm();
+
+(async () => {
+  const remote = await fetchScriptConfigFromSupabase();
+  if (remote) {
+    config = remote;
+    localStorage.setItem(SCRIPT_STORAGE_KEY, JSON.stringify(config));
+    renderForm();
+  } else if (supabaseClient) {
+    // First boot: push current config so other devices can read it.
+    await persistScriptConfigToSupabase(config);
+  }
+})();

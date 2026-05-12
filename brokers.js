@@ -148,6 +148,70 @@ async function setBrokerHardLockInSupabase(brokerName, hardLocked) {
   return !error;
 }
 
+function brokerToSupabaseRow(broker) {
+  // focus_today and hard_locked live in their own tables, not the brokers row.
+  const { focus_today, hard_locked, ...rest } = broker;
+  return {
+    broker_name: broker.name,
+    data: rest,
+    updated_at: new Date().toISOString()
+  };
+}
+
+function supabaseRowToBroker(row) {
+  if (!row || !row.data) return null;
+  return normalizeBrokerLocation({ ...row.data, name: row.broker_name });
+}
+
+async function fetchBrokersFromSupabase() {
+  if (!supabaseClient) return null;
+  try {
+    const { data, error } = await supabaseClient
+      .from("brokers")
+      .select("broker_name, data")
+      .order("broker_name");
+    if (error || !Array.isArray(data)) return null;
+    return data.map(supabaseRowToBroker).filter(Boolean);
+  } catch (e) {
+    return null;
+  }
+}
+
+async function upsertBrokerToSupabase(broker) {
+  if (!supabaseClient) return { ok: false, reason: "no-client" };
+  const row = brokerToSupabaseRow(broker);
+  const { error } = await supabaseClient
+    .from("brokers")
+    .upsert(row, { onConflict: "broker_name" });
+  return { ok: !error, error };
+}
+
+async function deleteBrokerFromSupabase(brokerName) {
+  if (!supabaseClient) return { ok: false, reason: "no-client" };
+  // Clean focus/lock rows so a recreated broker with the same name starts fresh.
+  await supabaseClient.from("broker_focus").delete().eq("broker_name", brokerName);
+  await supabaseClient.from("broker_locks").delete().eq("broker_name", brokerName);
+  const { error } = await supabaseClient.from("brokers").delete().eq("broker_name", brokerName);
+  return { ok: !error, error };
+}
+
+async function seedBrokersToSupabaseIfEmpty() {
+  if (!supabaseClient) return;
+  const existing = await fetchBrokersFromSupabase();
+  if (existing === null) return;
+  if (existing.length > 0) return;
+  const local = readBrokers();
+  const seed = local.length
+    ? local
+    : DEFAULT_BROKERS.map((broker) => ({
+        ...normalizeBrokerLocation(broker),
+        specialRequests: broker.specialRequests || SPECIAL_REQUESTS_BY_BROKER[broker.name] || ""
+      }));
+  for (const broker of seed) {
+    await upsertBrokerToSupabase(broker);
+  }
+}
+
 function escapeAttr(value) {
   return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
@@ -339,7 +403,20 @@ async function renderBrokers() {
   const bookedTodayNames = await fetchBookedTodayNames();
   const lockMap = await fetchBrokerLocksMap();
   const focusMap = await fetchBrokerFocusMap();
-  const rawBrokers = readBrokers().map((b) => ({
+  const supabaseBrokers = await fetchBrokersFromSupabase();
+
+  let sourceBrokers;
+  if (supabaseBrokers && supabaseBrokers.length) {
+    sourceBrokers = supabaseBrokers;
+    // Mirror Supabase truth into the localStorage cache so app.js and offline reads stay in sync.
+    try {
+      localStorage.setItem(BROKER_STORAGE_KEY, JSON.stringify(supabaseBrokers));
+    } catch (err) { /* ignore */ }
+  } else {
+    sourceBrokers = readBrokers();
+  }
+
+  const rawBrokers = sourceBrokers.map((b) => ({
     ...b,
     hard_locked: lockMap ? (lockMap.get(b.name) === true) : (b.hard_locked === true),
     focus_today: focusMap ? (focusMap.get(b.name) === true) : (b.focus_today === true)
@@ -418,17 +495,20 @@ async function renderBrokers() {
   });
 
   document.querySelectorAll(".delete-btn").forEach((btn) => {
-    btn.addEventListener("click", (event) => {
+    btn.addEventListener("click", async (event) => {
       const index = Number(event.currentTarget.dataset.index);
       const brokersRaw = readBrokers();
       const brokerName = brokersRaw[index]?.name || "this broker";
       const confirmed = window.confirm(`Delete ${brokerName}? This cannot be undone.`);
       if (!confirmed) return;
+      const result = await deleteBrokerFromSupabase(brokerName);
       brokersRaw.splice(index, 1);
       saveBrokers(brokersRaw);
       editingIndex = null;
-      message.textContent = `${brokerName} deleted.`;
-      renderBrokers();
+      message.textContent = result.ok
+        ? `${brokerName} deleted.`
+        : `${brokerName} removed locally, but Supabase delete failed. Check network or the brokers table.`;
+      await renderBrokers();
     });
   });
 
@@ -485,29 +565,51 @@ form.addEventListener("submit", async (event) => {
     specialRequests,
     booking
   };
+
+  let savedBroker;
+  let previousName = null;
   if (editingIndex === null) {
+    if (brokers.some((b) => b.name === name)) {
+      message.textContent = `A broker named ${name} already exists.`;
+      return;
+    }
     brokers.push(payload);
+    savedBroker = payload;
   } else {
+    previousName = brokers[editingIndex]?.name || null;
     brokers[editingIndex] = { ...brokers[editingIndex], ...payload };
+    savedBroker = brokers[editingIndex];
+  }
+
+  // Supabase is the source of truth; write there first, then update the local cache.
+  const upsertResult = await upsertBrokerToSupabase(savedBroker);
+  if (previousName && previousName !== name) {
+    await deleteBrokerFromSupabase(previousName);
   }
   saveBrokers(brokers);
+
   form.reset();
   editingIndex = null;
   saveBrokerBtn.textContent = "Add Broker";
   cancelEditBtn.classList.add("hidden");
   locationModeSelect.value = "us_wide";
   updateLocationPicker([]);
-  message.textContent = `${name} saved to master broker database.`;
-  renderBrokers();
+  message.textContent = upsertResult.ok
+    ? `${name} saved to master broker database.`
+    : `${name} saved locally, but Supabase sync failed. Check network or that the brokers table exists.`;
+  await renderBrokers();
 });
 
-try {
-  syncFromWindowName();
-  ensureDefaultRoster();
-  renderBrokers();
-} catch (error) {
-  brokerList.innerHTML = "<p>Unable to load broker list. Please refresh this page.</p>";
-}
+(async () => {
+  try {
+    syncFromWindowName();
+    ensureDefaultRoster();
+    await seedBrokersToSupabaseIfEmpty();
+    await renderBrokers();
+  } catch (error) {
+    brokerList.innerHTML = "<p>Unable to load broker list. Please refresh this page.</p>";
+  }
+})();
 
 locationModeSelect.addEventListener("change", () => {
   updateLocationPicker([]);

@@ -285,6 +285,9 @@ const el = {
   confirmationPanel: document.getElementById("confirmation-panel"),
   confirmationBrokerInfo: document.getElementById("confirmation-broker-info"),
   confirmationCandidateInfo: document.getElementById("confirmation-candidate-info"),
+  confirmationClosingScript: document.getElementById("confirmation-closing-script"),
+  confirmationSubmissionLink: document.getElementById("confirmation-submission-link"),
+  confirmationHandoffScript: document.getElementById("confirmation-handoff-script"),
   startNewSession: document.getElementById("start-new-session")
 };
 
@@ -355,6 +358,45 @@ class BookingStore {
       const map = new Map();
       data.forEach((row) => map.set(row.broker_name, row.hard_locked === true));
       return map;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async fetchBrokersFromSupabase() {
+    if (!this.client) return null;
+    try {
+      const { data, error } = await this.client
+        .from("brokers")
+        .select("broker_name, data")
+        .order("broker_name");
+      if (error || !Array.isArray(data)) return null;
+      return data
+        .map((row) => (row && row.data ? normalizeBrokerLocation({ ...row.data, name: row.broker_name }) : null))
+        .filter(Boolean);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async fetchScriptConfigFromSupabase() {
+    if (!this.client) return null;
+    try {
+      const { data, error } = await this.client
+        .from("app_script")
+        .select("config")
+        .eq("id", 1)
+        .maybeSingle();
+      if (error || !data || !data.config) return null;
+      const parsed = data.config;
+      if (!parsed || !Array.isArray(parsed.questions)) return null;
+      parsed.questions = parsed.questions.map((q) => {
+        if (q.id === "liquidity" || q.id === "netWorth") {
+          return { ...q, type: "number_k", options: undefined };
+        }
+        return q;
+      });
+      return parsed;
     } catch (e) {
       return null;
     }
@@ -497,10 +539,18 @@ function renderTable(matches) {
   return `<table><thead><tr><th>Broker</th><th>Min Liquid</th><th>Min Net Worth</th><th>Credit</th><th>Booking URL</th><th>Daily Lock</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-async function runMatching() {
-  // Always read latest broker master data before matching.
-  state.brokers = getMasterBrokers();
-  // Cross-page focus state lives in Supabase (file:// origins isolate localStorage); apply it here.
+async function refreshLiveState() {
+  // Brokers: Supabase is source of truth; fall back to localStorage cache if unreachable.
+  const supabaseBrokers = state.db ? await state.db.fetchBrokersFromSupabase() : null;
+  if (supabaseBrokers && supabaseBrokers.length) {
+    state.brokers = supabaseBrokers;
+    // Mirror to localStorage cache so offline / older code paths see the latest data.
+    try { localStorage.setItem(BROKER_STORAGE_KEY, JSON.stringify(supabaseBrokers)); } catch (err) { /* ignore */ }
+  } else {
+    state.brokers = getMasterBrokers();
+  }
+
+  // Overlay focus + hard-lock state from their dedicated tables.
   const focusMap = state.db ? await state.db.fetchBrokerFocusMap() : null;
   if (focusMap) {
     state.brokers = state.brokers.map((b) => ({ ...b, focus_today: focusMap.get(b.name) === true }));
@@ -509,7 +559,19 @@ async function runMatching() {
   if (lockMap) {
     state.brokers = state.brokers.map((b) => ({ ...b, hard_locked: lockMap.get(b.name) === true }));
   }
-  state.scriptConfig = getScriptConfig();
+
+  // Script: Supabase is source of truth; fall back to localStorage cache if unreachable.
+  const supabaseScript = state.db ? await state.db.fetchScriptConfigFromSupabase() : null;
+  if (supabaseScript) {
+    state.scriptConfig = supabaseScript;
+    try { localStorage.setItem(SCRIPT_STORAGE_KEY, JSON.stringify(supabaseScript)); } catch (err) { /* ignore */ }
+  } else {
+    state.scriptConfig = getScriptConfig();
+  }
+}
+
+async function runMatching() {
+  await refreshLiveState();
   const leadState = normalizeState(state.answers.stateInput);
   const lead = {
     liquidity: state.answers.liquidity,
@@ -650,6 +712,17 @@ function showConfirmation(brokerName) {
   if (!el.confirmationPanel) return;
   el.confirmationBrokerInfo.innerHTML = renderBookedBrokerTable(brokerName);
   el.confirmationCandidateInfo.innerHTML = renderCandidateInfoTable();
+  const cfg = state.scriptConfig || DEFAULT_SCRIPT_CONFIG;
+  const tz = getTimezone();
+  if (el.confirmationClosingScript) {
+    el.confirmationClosingScript.textContent = (cfg.closingScript || "").replace("[Timezone]", tz);
+  }
+  if (el.confirmationHandoffScript) {
+    el.confirmationHandoffScript.textContent = cfg.handoffScript || "";
+  }
+  if (el.confirmationSubmissionLink) {
+    el.confirmationSubmissionLink.href = cfg.submissionLink || "#";
+  }
   // Hide every other panel so the confirmation is the only thing visible.
   const sessionPanel = document.getElementById("session-panel");
   if (sessionPanel) sessionPanel.classList.add("hidden");
@@ -722,8 +795,7 @@ el.startSession.addEventListener("click", async () => {
     return;
   }
   state.db = new BookingStore();
-  state.brokers = getMasterBrokers();
-  state.scriptConfig = getScriptConfig();
+  await refreshLiveState();
   state.bookingsToday = await state.db.fetchTodayBookings();
   if (state.isAdmin) {
     el.adminPanel.classList.remove("hidden");
