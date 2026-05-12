@@ -635,15 +635,27 @@ async function runMatching() {
 
   document.querySelectorAll(".book-btn").forEach((btn) => {
     btn.addEventListener("click", async (evt) => {
-      const brokerName = evt.currentTarget.dataset.name;
-      await state.db.saveBooking({
-        broker_name: brokerName,
-        setter_name: el.setterName.value || "Unknown",
-        lead_city: state.answers.city || "",
-        lead_state: state.answers.stateInput || ""
-      });
-      state.bookingsToday = await state.db.fetchTodayBookings();
-      showConfirmation(brokerName);
+      const button = evt.currentTarget;
+      const brokerName = button.dataset.name;
+      const confirmed = window.confirm(`Confirm booking with ${brokerName}? This will mark them as booked for the day.`);
+      if (!confirmed) return;
+      button.disabled = true;
+      const originalLabel = button.textContent;
+      button.textContent = "Saving...";
+      try {
+        await state.db.saveBooking({
+          broker_name: brokerName,
+          setter_name: el.setterName.value || "Unknown",
+          lead_city: state.answers.city || "",
+          lead_state: state.answers.stateInput || ""
+        });
+        state.bookingsToday = await state.db.fetchTodayBookings();
+        showConfirmation(brokerName);
+      } catch (err) {
+        button.disabled = false;
+        button.textContent = originalLabel;
+        alert("Booking did not save. Please try again.");
+      }
     });
   });
 }
