@@ -533,10 +533,11 @@ function renderTable(matches) {
       <td>$${b.minLiquid.toLocaleString()}</td>
       <td>$${b.minNetWorth.toLocaleString()}</td>
       <td>${b.minCredit}+</td>
+      <td>${b.specialRequests ? escapeHTML(b.specialRequests) : "—"}</td>
       <td><a href="${b.booking}" target="_blank" rel="noopener noreferrer">${b.booking}</a></td>
       <td><button class="book-btn" data-name="${b.name}">Booked</button></td>
     </tr>`).join("");
-  return `<table><thead><tr><th>Broker</th><th>Min Liquid</th><th>Min Net Worth</th><th>Credit</th><th>Booking URL</th><th>Daily Lock</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Broker</th><th>Min Liquid</th><th>Min Net Worth</th><th>Credit</th><th>Special Requests</th><th>Booking URL</th><th>Daily Lock</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 async function refreshLiveState() {
