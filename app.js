@@ -608,6 +608,9 @@ async function runMatching() {
     country: state.answers.country,
     timezone: getTimezone()
   };
+  if (state.db) {
+    state.bookingsToday = await state.db.fetchTodayBookings();
+  }
   const bookedNames = new Set((state.bookingsToday || []).map((row) => row.broker_name));
   const candidate = { lead, bookedNames };
 
