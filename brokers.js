@@ -3,7 +3,7 @@ const BROKER_WINDOW_NAME_PREFIX = "BROKER_DB_SYNC::";
 const SUPABASE_URL = "https://ohiholwyaagawjqyocpq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oaWhvbHd5YWFnYXdqcXlvY3BxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMzkyNzMsImV4cCI6MjA5MzgxNTI3M30.qqQmNslJASRxGuR_kpGv6-x05_erZWq52o4yUTL6qDk";
 const REGISTRATION_STATES = ["CA","HI","IL","IN","MD","MI","MN","NY","ND","RI","VA","WA","WI"];
-const NON_REGISTRATION_STATES = ["AL","AK","AZ","AR","CO","DE","DC","FL","GA","ID","IA","KS","LA","ME","MA","MS","MO","MT","NV","NH","NJ","NM","OH","OK","PA","TN","VT","WV","WY"];
+const NON_REGISTRATION_STATES = ["AL","AK","AZ","AR","CO","CT","DE","DC","FL","GA","ID","IA","KS","KY","LA","ME","MA","MS","MO","MT","NE","NV","NH","NJ","NM","NC","OH","OK","OR","PA","SC","SD","TN","TX","UT","VT","WV","WY"];
 const ALL_CANADIAN_PROVINCES = ["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"];
 const CANADIAN_PROVINCE_NAMES = {
   AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick",
@@ -375,7 +375,7 @@ function updateLocationPicker(selectedCodes = []) {
     locationPicker.classList.remove("hidden");
     locationPicker.innerHTML = renderPickerOptions(ALL_CANADIAN_PROVINCES, CANADIAN_PROVINCE_NAMES, selectedCodes);
   } else if (mode === "non_registration_only") {
-    locationNote.textContent = "Matches: AL, AK, AZ, AR, CO, DE, DC, FL, GA, ID, IA, KS, LA, ME, MA, MS, MO, MT, NV, NH, NJ, NM, OH, OK, PA, TN, VT, WV, WY";
+    locationNote.textContent = "Matches: AL, AK, AZ, AR, CO, CT, DE, DC, FL, GA, ID, IA, KS, KY, LA, ME, MA, MS, MO, MT, NE, NV, NH, NJ, NM, NC, OH, OK, OR, PA, SC, SD, TN, TX, UT, VT, WV, WY";
     locationNote.classList.remove("hidden");
   }
 }

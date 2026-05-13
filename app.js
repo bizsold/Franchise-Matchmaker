@@ -7,7 +7,7 @@ const SCRIPT_STORAGE_KEY = "matchmaker-script-config-v1";
 const SCRIPT_WINDOW_NAME_PREFIX = "SCRIPT_CFG_SYNC::";
 
 const REGISTRATION_STATES = ["CA","HI","IL","IN","MD","MI","MN","NY","ND","RI","VA","WA","WI"];
-const NON_REGISTRATION_STATES = ["AL","AK","AZ","AR","CO","DE","DC","FL","GA","ID","IA","KS","LA","ME","MA","MS","MO","MT","NV","NH","NJ","NM","OH","OK","PA","TN","VT","WV","WY"];
+const NON_REGISTRATION_STATES = ["AL","AK","AZ","AR","CO","CT","DE","DC","FL","GA","ID","IA","KS","KY","LA","ME","MA","MS","MO","MT","NE","NV","NH","NJ","NM","NC","OH","OK","OR","PA","SC","SD","TN","TX","UT","VT","WV","WY"];
 const ALL_CANADIAN_PROVINCES = ["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"];
 const CANADIAN_PROVINCE_NAMES = {
   AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick",
