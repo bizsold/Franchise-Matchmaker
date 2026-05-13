@@ -257,7 +257,8 @@ const state = {
   bookingsToday: [],
   brokers: [],
   scriptConfig: DEFAULT_SCRIPT_CONFIG,
-  db: null
+  db: null,
+  lastBooking: null
 };
 
 const el = {
@@ -288,6 +289,7 @@ const el = {
   confirmationClosingScript: document.getElementById("confirmation-closing-script"),
   confirmationSubmissionLink: document.getElementById("confirmation-submission-link"),
   confirmationHandoffScript: document.getElementById("confirmation-handoff-script"),
+  confirmationGoBack: document.getElementById("confirmation-go-back"),
   startNewSession: document.getElementById("start-new-session")
 };
 
@@ -335,6 +337,28 @@ class BookingStore {
     }
     await this.client.from("bookings").insert(payload);
     return payload;
+  }
+
+  async unbookBooking(booking) {
+    if (!booking) return false;
+    if (!this.client) {
+      const data = JSON.parse(localStorage.getItem(`bookings-${booking.date_est}`) || "[]");
+      const filtered = data.filter((b) => !(
+        b.broker_name === booking.broker_name &&
+        b.setter_name === booking.setter_name &&
+        b.created_at === booking.created_at
+      ));
+      localStorage.setItem(`bookings-${booking.date_est}`, JSON.stringify(filtered));
+      return true;
+    }
+    const { error } = await this.client
+      .from("bookings")
+      .delete()
+      .eq("date_est", booking.date_est)
+      .eq("broker_name", booking.broker_name)
+      .eq("setter_name", booking.setter_name)
+      .eq("created_at", booking.created_at);
+    return !error;
   }
 
   async fetchBrokerFocusMap() {
@@ -534,10 +558,9 @@ function renderTable(matches) {
       <td>$${b.minNetWorth.toLocaleString()}</td>
       <td>${b.minCredit}+</td>
       <td>${b.specialRequests ? escapeHTML(b.specialRequests) : "—"}</td>
-      <td><a href="${b.booking}" target="_blank" rel="noopener noreferrer">${b.booking}</a></td>
-      <td><button class="book-btn" data-name="${b.name}">Booked</button></td>
+      <td><button class="book-btn" data-name="${b.name}">Select for Booking</button></td>
     </tr>`).join("");
-  return `<table><thead><tr><th>Broker</th><th>Min Liquid</th><th>Min Net Worth</th><th>Credit</th><th>Special Requests</th><th>Booking URL</th><th>Daily Lock</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Broker</th><th>Min Liquid</th><th>Min Net Worth</th><th>Credit</th><th>Special Requests</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 async function refreshLiveState() {
@@ -643,12 +666,13 @@ async function runMatching() {
       const originalLabel = button.textContent;
       button.textContent = "Saving...";
       try {
-        await state.db.saveBooking({
+        const saved = await state.db.saveBooking({
           broker_name: brokerName,
           setter_name: el.setterName.value || "Unknown",
           lead_city: state.answers.city || "",
           lead_state: state.answers.stateInput || ""
         });
+        state.lastBooking = saved;
         state.bookingsToday = await state.db.fetchTodayBookings();
         showConfirmation(brokerName);
       } catch (err) {
@@ -696,16 +720,16 @@ function renderBookedBrokerTable(brokerName) {
   const minNetWorth = `$${Number(broker.minNetWorth || 0).toLocaleString()}`;
   const minCredit = `${broker.minCredit || 0}+`;
   const booking = broker.booking || "";
-  const bookingCell = booking
-    ? `<a href="${escapeHTML(booking)}" target="_blank" rel="noopener noreferrer">${escapeHTML(booking)}</a>`
-    : "—";
+  const calendarButton = booking
+    ? `<p style="margin-top:8px;"><a class="submission-btn" href="${escapeHTML(booking)}" target="_blank" rel="noopener noreferrer">Open Calendar Link</a></p>`
+    : "";
   const specialRow = broker.specialRequests
     ? `<tr><th>Special Requests</th><td>${escapeHTML(broker.specialRequests)}</td></tr>`
     : "";
   return `
     <table>
       <thead>
-        <tr><th>Broker</th><th>Min Liquid</th><th>Min Net Worth</th><th>Credit</th><th>Booking URL</th></tr>
+        <tr><th>Broker</th><th>Min Liquid</th><th>Min Net Worth</th><th>Credit</th></tr>
       </thead>
       <tbody>
         <tr>
@@ -713,11 +737,11 @@ function renderBookedBrokerTable(brokerName) {
           <td>${minLiquid}</td>
           <td>${minNetWorth}</td>
           <td>${minCredit}</td>
-          <td>${bookingCell}</td>
         </tr>
       </tbody>
     </table>
     ${specialRow ? `<table style="margin-top:8px;"><tbody>${specialRow}</tbody></table>` : ""}
+    ${calendarButton}
   `;
 }
 
@@ -760,6 +784,7 @@ function resetSession() {
   state.step = 0;
   state.bookingsToday = [];
   state.db = null;
+  state.lastBooking = null;
   el.setterName.value = "";
   el.adminCode.value = "";
   el.role.value = "setter";
@@ -882,6 +907,37 @@ if (el.startNewSession) {
   el.startNewSession.addEventListener("click", () => {
     resetSession();
     try { history.replaceState({ view: "setter" }, ""); } catch (err) { /* ignore */ }
+  });
+}
+
+if (el.confirmationGoBack) {
+  el.confirmationGoBack.addEventListener("click", async () => {
+    const btn = el.confirmationGoBack;
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = "Reverting...";
+    try {
+      if (state.lastBooking && state.db) {
+        const ok = await state.db.unbookBooking(state.lastBooking);
+        if (!ok) {
+          alert("Could not revert booking in Supabase. Please refresh and try again.");
+          return;
+        }
+        state.bookingsToday = await state.db.fetchTodayBookings();
+      }
+      state.lastBooking = null;
+      el.confirmationPanel.classList.add("hidden");
+      el.confirmationBrokerInfo.innerHTML = "";
+      el.confirmationCandidateInfo.innerHTML = "";
+      el.resultsPanel.classList.remove("hidden");
+      try { history.replaceState({ view: "session" }, ""); } catch (err) { /* ignore */ }
+      window.scrollTo({ top: 0, behavior: "auto" });
+    } catch (err) {
+      alert("Something went wrong reverting the booking. Please try again.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
   });
 }
 

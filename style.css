@@ -280,6 +280,107 @@ td a {
   background: #1849a9;
 }
 
+.go-back-btn {
+  background: #475467;
+  color: #fff;
+  font-weight: 700;
+  font-size: 18px;
+  padding: 14px 24px;
+  border-radius: 10px;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.go-back-btn:hover,
+.go-back-btn:focus {
+  background: #344054;
+}
+
+.book-btn {
+  white-space: nowrap;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+
+#tier1,
+#tier2 {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#tier1 td:first-child,
+#tier1 th:first-child,
+#tier2 td:first-child,
+#tier2 th:first-child {
+  white-space: nowrap;
+  width: 1%;
+  font-size: 12px;
+}
+
+/* Min Liquid, Min Net Worth — slightly narrower; values may ellipsize if huge */
+#tier1 td:nth-child(2),
+#tier1 td:nth-child(3),
+#tier2 td:nth-child(2),
+#tier2 td:nth-child(3) {
+  max-width: 100px;
+  width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+#tier1 th:nth-child(2),
+#tier1 th:nth-child(3),
+#tier2 th:nth-child(2),
+#tier2 th:nth-child(3) {
+  max-width: 100px;
+  width: 100px;
+  white-space: normal;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+/* Credit — slightly narrower */
+#tier1 td:nth-child(4),
+#tier2 td:nth-child(4) {
+  max-width: 68px;
+  width: 68px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+#tier1 th:nth-child(4),
+#tier2 th:nth-child(4) {
+  max-width: 68px;
+  width: 68px;
+  white-space: normal;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+#tier1 td:nth-child(5),
+#tier1 th:nth-child(5),
+#tier2 td:nth-child(5),
+#tier2 th:nth-child(5) {
+  max-width: 320px;
+  width: 320px;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+#tier1 td:last-child,
+#tier2 td:last-child {
+  white-space: nowrap;
+  width: 1%;
+}
+
 /* Brokers admin: hard lock row + toggle */
 #broker-list tr.broker-row-hard-locked td {
   background: #fef2f2;
