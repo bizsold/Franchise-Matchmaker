@@ -6,6 +6,13 @@ const BROKER_WINDOW_NAME_PREFIX = "BROKER_DB_SYNC::";
 const SCRIPT_STORAGE_KEY = "matchmaker-script-config-v1";
 const SCRIPT_WINDOW_NAME_PREFIX = "SCRIPT_CFG_SYNC::";
 
+function createSupabaseClient() {
+  if (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase?.createClient) {
+    return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+  return null;
+}
+
 const REGISTRATION_STATES = ["CA","HI","IL","IN","MD","MI","MN","NY","ND","RI","VA","WA","WI"];
 const NON_REGISTRATION_STATES = ["AL","AK","AZ","AR","CO","CT","DE","DC","FL","GA","ID","IA","KS","KY","LA","ME","MA","MS","MO","MT","NE","NV","NH","NJ","NM","NC","OH","OK","OR","PA","SC","SD","TN","TX","UT","VT","WV","WY"];
 const ALL_CANADIAN_PROVINCES = ["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"];
@@ -301,10 +308,14 @@ el.adminCode.value = "";
 
 class BookingStore {
   constructor() {
-    this.client = null;
-    if (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase?.createClient) {
-      this.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    this.client = createSupabaseClient();
+  }
+
+  ensureClient() {
+    if (!this.client) {
+      this.client = createSupabaseClient();
     }
+    return this.client;
   }
 
   currentDateEST() {
@@ -318,16 +329,16 @@ class BookingStore {
 
   async fetchTodayBookings() {
     const today = this.currentDateEST();
-    if (!this.client) {
-      return JSON.parse(localStorage.getItem(`bookings-${today}`) || "[]");
-    }
-    const { data, error } = await this.client.from("bookings").select("*").eq("date_est", today);
+    const client = this.ensureClient();
+    if (!client) return [];
+    const { data, error } = await client.from("bookings").select("*").eq("date_est", today);
     if (error) return [];
     return data || [];
   }
 
   async logBookingEvent(event) {
-    if (!this.client) return;
+    const client = this.ensureClient();
+    if (!client) return false;
     const row = {
       event_type: event.event_type,
       broker_name: event.broker_name,
@@ -340,23 +351,30 @@ class BookingStore {
       error_message: event.error_message || null,
       source: event.source || null
     };
-    try {
-      await this.client.from("booking_events").insert(row);
-    } catch (err) {
-      // Never block booking flow if audit log fails.
-    }
+    const { error } = await client.from("booking_events").insert(row);
+    return !error;
   }
 
   async saveBooking(entry, source = "setter_app") {
     const today = this.currentDateEST();
     const payload = { ...entry, date_est: today, created_at: new Date().toISOString() };
-    if (!this.client) {
-      const data = JSON.parse(localStorage.getItem(`bookings-${today}`) || "[]");
-      data.push(payload);
-      localStorage.setItem(`bookings-${today}`, JSON.stringify(data));
-      return { ok: true, booking: payload };
+    const client = this.ensureClient();
+    if (!client) {
+      await this.logBookingEvent({
+        event_type: "booked",
+        broker_name: payload.broker_name,
+        setter_name: payload.setter_name,
+        date_est: payload.date_est,
+        lead_city: payload.lead_city,
+        lead_state: payload.lead_state,
+        booking_created_at: payload.created_at,
+        success: false,
+        error_message: "Supabase client unavailable",
+        source
+      });
+      return { ok: false, error: { message: "Supabase unavailable. Check your connection and refresh." }, booking: payload };
     }
-    const { error } = await this.client.from("bookings").insert(payload);
+    const { error } = await client.from("bookings").insert(payload);
     await this.logBookingEvent({
       event_type: "booked",
       broker_name: payload.broker_name,
@@ -377,17 +395,23 @@ class BookingStore {
 
   async unbookBooking(booking, source = "go_back") {
     if (!booking) return false;
-    if (!this.client) {
-      const data = JSON.parse(localStorage.getItem(`bookings-${booking.date_est}`) || "[]");
-      const filtered = data.filter((b) => !(
-        b.broker_name === booking.broker_name &&
-        b.setter_name === booking.setter_name &&
-        b.created_at === booking.created_at
-      ));
-      localStorage.setItem(`bookings-${booking.date_est}`, JSON.stringify(filtered));
-      return true;
+    const client = this.ensureClient();
+    if (!client) {
+      await this.logBookingEvent({
+        event_type: "unbooked",
+        broker_name: booking.broker_name,
+        setter_name: booking.setter_name,
+        date_est: booking.date_est,
+        lead_city: booking.lead_city || null,
+        lead_state: booking.lead_state || null,
+        booking_created_at: booking.created_at,
+        success: false,
+        error_message: "Supabase client unavailable",
+        source
+      });
+      return false;
     }
-    const { error } = await this.client
+    const { error } = await client
       .from("bookings")
       .delete()
       .eq("date_est", booking.date_est)

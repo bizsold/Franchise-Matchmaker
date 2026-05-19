@@ -217,7 +217,7 @@ function escapeAttr(value) {
 }
 
 async function logBookingEvent(event) {
-  if (!supabaseClient) return;
+  if (!supabaseClient) return false;
   const row = {
     event_type: event.event_type,
     broker_name: event.broker_name,
@@ -230,11 +230,8 @@ async function logBookingEvent(event) {
     error_message: event.error_message || null,
     source: event.source || null
   };
-  try {
-    await supabaseClient.from("booking_events").insert(row);
-  } catch (err) {
-    // Never block admin actions if audit log fails.
-  }
+  const { error } = await supabaseClient.from("booking_events").insert(row);
+  return !error;
 }
 
 async function unbookBrokerToday(brokerName) {
