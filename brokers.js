@@ -216,14 +216,69 @@ function escapeAttr(value) {
   return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
+async function logBookingEvent(event) {
+  if (!supabaseClient) return;
+  const row = {
+    event_type: event.event_type,
+    broker_name: event.broker_name,
+    setter_name: event.setter_name || "Unknown",
+    date_est: event.date_est,
+    lead_city: event.lead_city || null,
+    lead_state: event.lead_state || null,
+    booking_created_at: event.booking_created_at || null,
+    success: event.success !== false,
+    error_message: event.error_message || null,
+    source: event.source || null
+  };
+  try {
+    await supabaseClient.from("booking_events").insert(row);
+  } catch (err) {
+    // Never block admin actions if audit log fails.
+  }
+}
+
 async function unbookBrokerToday(brokerName) {
   if (!supabaseClient) return false;
   const todayEST = currentDateEST();
+  const { data: existingRows } = await supabaseClient
+    .from("bookings")
+    .select("broker_name, setter_name, date_est, lead_city, lead_state, created_at")
+    .eq("date_est", todayEST)
+    .eq("broker_name", brokerName);
+  const rows = Array.isArray(existingRows) ? existingRows : [];
+
   const { error } = await supabaseClient
     .from("bookings")
     .delete()
     .eq("date_est", todayEST)
     .eq("broker_name", brokerName);
+
+  if (rows.length) {
+    for (const row of rows) {
+      await logBookingEvent({
+        event_type: "unbooked",
+        broker_name: row.broker_name,
+        setter_name: row.setter_name,
+        date_est: row.date_est,
+        lead_city: row.lead_city,
+        lead_state: row.lead_state,
+        booking_created_at: row.created_at,
+        success: !error,
+        error_message: error?.message || null,
+        source: "admin_unbook"
+      });
+    }
+  } else {
+    await logBookingEvent({
+      event_type: "unbooked",
+      broker_name: brokerName,
+      setter_name: "Unknown",
+      date_est: todayEST,
+      success: !error,
+      error_message: error?.message || null,
+      source: "admin_unbook"
+    });
+  }
   return !error;
 }
 

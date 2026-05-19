@@ -326,20 +326,56 @@ class BookingStore {
     return data || [];
   }
 
-  async saveBooking(entry) {
+  async logBookingEvent(event) {
+    if (!this.client) return;
+    const row = {
+      event_type: event.event_type,
+      broker_name: event.broker_name,
+      setter_name: event.setter_name || "Unknown",
+      date_est: event.date_est,
+      lead_city: event.lead_city || null,
+      lead_state: event.lead_state || null,
+      booking_created_at: event.booking_created_at || null,
+      success: event.success !== false,
+      error_message: event.error_message || null,
+      source: event.source || null
+    };
+    try {
+      await this.client.from("booking_events").insert(row);
+    } catch (err) {
+      // Never block booking flow if audit log fails.
+    }
+  }
+
+  async saveBooking(entry, source = "setter_app") {
     const today = this.currentDateEST();
     const payload = { ...entry, date_est: today, created_at: new Date().toISOString() };
     if (!this.client) {
       const data = JSON.parse(localStorage.getItem(`bookings-${today}`) || "[]");
       data.push(payload);
       localStorage.setItem(`bookings-${today}`, JSON.stringify(data));
-      return payload;
+      return { ok: true, booking: payload };
     }
-    await this.client.from("bookings").insert(payload);
-    return payload;
+    const { error } = await this.client.from("bookings").insert(payload);
+    await this.logBookingEvent({
+      event_type: "booked",
+      broker_name: payload.broker_name,
+      setter_name: payload.setter_name,
+      date_est: payload.date_est,
+      lead_city: payload.lead_city,
+      lead_state: payload.lead_state,
+      booking_created_at: payload.created_at,
+      success: !error,
+      error_message: error?.message || null,
+      source
+    });
+    if (error) {
+      return { ok: false, error, booking: payload };
+    }
+    return { ok: true, booking: payload };
   }
 
-  async unbookBooking(booking) {
+  async unbookBooking(booking, source = "go_back") {
     if (!booking) return false;
     if (!this.client) {
       const data = JSON.parse(localStorage.getItem(`bookings-${booking.date_est}`) || "[]");
@@ -358,6 +394,18 @@ class BookingStore {
       .eq("broker_name", booking.broker_name)
       .eq("setter_name", booking.setter_name)
       .eq("created_at", booking.created_at);
+    await this.logBookingEvent({
+      event_type: "unbooked",
+      broker_name: booking.broker_name,
+      setter_name: booking.setter_name,
+      date_est: booking.date_est,
+      lead_city: booking.lead_city || null,
+      lead_state: booking.lead_state || null,
+      booking_created_at: booking.created_at,
+      success: !error,
+      error_message: error?.message || null,
+      source
+    });
     return !error;
   }
 
@@ -669,13 +717,19 @@ async function runMatching() {
       const originalLabel = button.textContent;
       button.textContent = "Saving...";
       try {
-        const saved = await state.db.saveBooking({
+        const result = await state.db.saveBooking({
           broker_name: brokerName,
           setter_name: el.setterName.value || "Unknown",
           lead_city: state.answers.city || "",
           lead_state: state.answers.stateInput || ""
-        });
-        state.lastBooking = saved;
+        }, "setter_app");
+        if (!result.ok) {
+          button.disabled = false;
+          button.textContent = originalLabel;
+          alert("Booking did not save to the server. Please try again.");
+          return;
+        }
+        state.lastBooking = result.booking;
         state.bookingsToday = await state.db.fetchTodayBookings();
         showConfirmation(brokerName);
       } catch (err) {
@@ -921,7 +975,7 @@ if (el.confirmationGoBack) {
     btn.textContent = "Reverting...";
     try {
       if (state.lastBooking && state.db) {
-        const ok = await state.db.unbookBooking(state.lastBooking);
+        const ok = await state.db.unbookBooking(state.lastBooking, "go_back");
         if (!ok) {
           alert("Could not revert booking in Supabase. Please refresh and try again.");
           return;
