@@ -1,5 +1,6 @@
 const BROKER_STORAGE_KEY = "brokers-master-db-v1";
 const BROKER_WINDOW_NAME_PREFIX = "BROKER_DB_SYNC::";
+const FOCUS_DRAFT_KEY = "broker-focus-draft-v1";
 const SUPABASE_URL = "https://ohiholwyaagawjqyocpq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oaWhvbHd5YWFnYXdqcXlvY3BxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMzkyNzMsImV4cCI6MjA5MzgxNTI3M30.qqQmNslJASRxGuR_kpGv6-x05_erZWq52o4yUTL6qDk";
 const REGISTRATION_STATES = ["CA","HI","IL","IN","MD","MI","MN","NY","ND","RI","VA","WA","WI"];
@@ -81,6 +82,62 @@ const cancelEditBtn = document.getElementById("cancel-edit-btn");
 const saveFocusListBtn = document.getElementById("save-focus-list-btn");
 let editingIndex = null;
 const supabaseClient = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+function readFocusDraft() {
+  try {
+    const raw = sessionStorage.getItem(FOCUS_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function writeFocusDraft(draft) {
+  try {
+    sessionStorage.setItem(FOCUS_DRAFT_KEY, JSON.stringify(draft));
+  } catch (err) {
+    // Ignore quota / private mode errors.
+  }
+}
+
+function clearFocusDraft() {
+  try {
+    sessionStorage.removeItem(FOCUS_DRAFT_KEY);
+  } catch (err) {
+    // Ignore.
+  }
+}
+
+function snapshotFocusCheckboxesToDraft() {
+  const checkboxes = document.querySelectorAll(".focus-today-checkbox");
+  if (!checkboxes.length) return;
+  const draft = readFocusDraft() || {};
+  checkboxes.forEach((cb) => {
+    const name = cb.dataset.brokerFocus;
+    if (name) draft[name] = cb.checked;
+  });
+  writeFocusDraft(draft);
+}
+
+function resolveFocusToday(brokerName, focusMap, draft) {
+  if (draft && Object.prototype.hasOwnProperty.call(draft, brokerName)) {
+    return draft[brokerName] === true;
+  }
+  if (focusMap) return focusMap.get(brokerName) === true;
+  return false;
+}
+
+function updateFocusListTodayFromDom() {
+  const names = [];
+  document.querySelectorAll(".focus-today-checkbox:checked").forEach((cb) => {
+    if (cb.dataset.brokerFocus) names.push(cb.dataset.brokerFocus);
+  });
+  focusListToday.innerHTML = names.length
+    ? names.join(", ")
+    : "<span class=\"subtitle\">No brokers selected for focus today.</span>";
+}
 
 function currentDateEST() {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -468,10 +525,11 @@ async function renderBrokers() {
     sourceBrokers = readBrokers();
   }
 
+  const focusDraft = readFocusDraft();
   const rawBrokers = sourceBrokers.map((b) => ({
     ...b,
     hard_locked: lockMap ? (lockMap.get(b.name) === true) : (b.hard_locked === true),
-    focus_today: focusMap ? (focusMap.get(b.name) === true) : (b.focus_today === true)
+    focus_today: resolveFocusToday(b.name, focusMap, focusDraft)
   }));
   const brokers = rawBrokers
     .map((broker, originalIndex) => ({ broker, originalIndex }))
@@ -586,6 +644,16 @@ async function renderBrokers() {
       await renderBrokers();
     });
   });
+
+  document.querySelectorAll(".focus-today-checkbox").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const draft = readFocusDraft() || {};
+      const name = cb.dataset.brokerFocus;
+      if (name) draft[name] = cb.checked;
+      writeFocusDraft(draft);
+      updateFocusListTodayFromDom();
+    });
+  });
 }
 
 form.addEventListener("submit", async (event) => {
@@ -680,43 +748,56 @@ cancelEditBtn.addEventListener("click", () => {
 updateLocationPicker([]);
 
 saveFocusListBtn.addEventListener("click", async () => {
+  snapshotFocusCheckboxesToDraft();
+  const draft = readFocusDraft();
   const brokers = JSON.parse(localStorage.getItem(BROKER_STORAGE_KEY) || "[]");
   brokers.forEach((broker) => {
+    if (draft && Object.prototype.hasOwnProperty.call(draft, broker.name)) {
+      broker.focus_today = draft[broker.name] === true;
+      return;
+    }
     const checkbox = document.querySelector(`[data-broker-focus="${broker.name}"]`);
     if (checkbox) {
       broker.focus_today = checkbox.checked;
     }
   });
 
-  // Mirror to localStorage so the broker admin view is consistent on reload.
   localStorage.setItem(BROKER_STORAGE_KEY, JSON.stringify(brokers));
 
-  // Durable cross-page state lives in Supabase (file:// origins isolate localStorage).
   const result = await persistBrokerFocusToSupabase(brokers);
 
   if (!result.ok) {
     alert("Focus list saved locally, but could not sync to Supabase. Check your network or that the broker_focus table exists.");
   } else {
+    clearFocusDraft();
     alert("Focus list saved successfully.");
   }
   renderBrokers();
 });
 
-// Keep broker admin view fresh when data changes in other pages/tabs.
+// Refresh roster when another tab updates brokers; keep unsaved focus draft in this tab.
 window.addEventListener("storage", (event) => {
   if (event.key === BROKER_STORAGE_KEY) {
+    snapshotFocusCheckboxesToDraft();
     renderBrokers();
   }
 });
 
 window.addEventListener("focus", () => {
   syncFromWindowName();
+  snapshotFocusCheckboxesToDraft();
   renderBrokers();
 });
 
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) {
-    syncFromWindowName();
-    renderBrokers();
+  if (document.hidden) {
+    snapshotFocusCheckboxesToDraft();
+    return;
   }
+  syncFromWindowName();
+  renderBrokers();
+});
+
+window.addEventListener("pagehide", () => {
+  snapshotFocusCheckboxesToDraft();
 });
