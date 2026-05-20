@@ -622,7 +622,7 @@ async function renderBrokers() {
           <th>Status</th>
           <th>Special Requests</th>
           <th>Booking Link</th>
-          <th>Focus Today</th>
+          <th>Focus</th>
           <th>Hard Lock</th>
           <th>Booked Today</th>
           <th>Edit</th>

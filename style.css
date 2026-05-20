@@ -389,6 +389,15 @@ td a {
   background: #fef2f2;
 }
 
+#broker-list th:nth-child(10),
+#broker-list td:nth-child(10) {
+  width: 52px;
+  max-width: 52px;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 #broker-list th:nth-child(11),
 #broker-list td:nth-child(11) {
   width: 108px;
