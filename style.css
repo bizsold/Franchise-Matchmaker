@@ -406,3 +406,30 @@ td a {
   color: #fff;
   border-color: #991b1b;
 }
+
+/* Brokers admin: booked today row + toggle */
+#broker-list tr.broker-row-booked-today td {
+  background: #ecfdf5;
+}
+
+#broker-list .booked-today-btn {
+  border: 2px solid #059669;
+  background: #fff;
+  color: #047857;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#broker-list .booked-today-btn:hover {
+  background: #ecfdf5;
+}
+
+#broker-list .booked-today-btn.active {
+  background: #059669;
+  color: #fff;
+  border-color: #047857;
+}

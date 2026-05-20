@@ -291,6 +291,37 @@ async function logBookingEvent(event) {
   return !error;
 }
 
+async function bookBrokerToday(brokerName) {
+  if (!supabaseClient) return false;
+  const todayEST = currentDateEST();
+  const bookedNames = await fetchBookedTodayNames();
+  if (bookedNames.has(brokerName)) return true;
+
+  const created_at = new Date().toISOString();
+  const payload = {
+    broker_name: brokerName,
+    setter_name: "Admin",
+    lead_city: "",
+    lead_state: "",
+    date_est: todayEST,
+    created_at
+  };
+  const { error } = await supabaseClient.from("bookings").insert(payload);
+  await logBookingEvent({
+    event_type: "booked",
+    broker_name: brokerName,
+    setter_name: "Admin",
+    date_est: todayEST,
+    lead_city: "",
+    lead_state: "",
+    booking_created_at: created_at,
+    success: !error,
+    error_message: error?.message || null,
+    source: "admin_book"
+  });
+  return !error;
+}
+
 async function unbookBrokerToday(brokerName) {
   if (!supabaseClient) return false;
   const todayEST = currentDateEST();
@@ -334,6 +365,11 @@ async function unbookBrokerToday(brokerName) {
     });
   }
   return !error;
+}
+
+async function setBrokerBookedTodayInSupabase(brokerName, booked) {
+  if (booked) return bookBrokerToday(brokerName);
+  return unbookBrokerToday(brokerName);
 }
 
 function normalizeBrokerLocation(broker) {
@@ -548,9 +584,13 @@ async function renderBrokers() {
 
   const rows = brokers.map(({ broker, originalIndex }) => {
     const locked = broker.hard_locked === true;
-    const rowClass = locked ? " broker-row-hard-locked" : "";
+    const bookedToday = bookedTodayNames.has(broker.name);
+    const rowClass = [
+      locked ? "broker-row-hard-locked" : "",
+      bookedToday ? "broker-row-booked-today" : ""
+    ].filter(Boolean).join(" ");
     return `
-      <tr class="${rowClass.trim()}">
+      <tr class="${rowClass}">
         <td>${broker.name || ""}</td>
         <td>$${Number(broker.minLiquid || 0).toLocaleString()}</td>
         <td>$${Number(broker.minNetWorth || 0).toLocaleString()}</td>
@@ -562,8 +602,7 @@ async function renderBrokers() {
         <td><a href="${broker.booking}" target="_blank" rel="noopener noreferrer">${broker.booking}</a></td>
         <td><input class="focus-today-checkbox" type="checkbox" data-index="${originalIndex}" data-broker-focus="${broker.name}" ${broker.focus_today === true ? "checked" : ""} /></td>
         <td><button type="button" class="hard-lock-btn${locked ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Hard lock: exclude from all matching">${locked ? "🔒 Locked" : "🔒 Hard Lock"}</button></td>
-        <td><input class="booked-today-indicator" type="checkbox" disabled ${bookedTodayNames.has(broker.name) ? "checked" : ""} /></td>
-        <td>${bookedTodayNames.has(broker.name) ? `<button class="icon-btn unbook-btn" data-name="${broker.name}" title="Unbook">Unbook</button>` : "-"}</td>
+        <td><button type="button" class="booked-today-btn${bookedToday ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Mark as booked for today (EST)">${bookedToday ? "✓ Booked Today" : "Mark Booked"}</button></td>
         <td><button class="icon-btn edit-btn" data-index="${originalIndex}" title="Edit">✏️</button></td>
         <td><button class="icon-btn delete-btn" data-index="${originalIndex}" title="Delete">Delete</button></td>
       </tr>
@@ -586,7 +625,6 @@ async function renderBrokers() {
           <th>Focus Today</th>
           <th>Hard Lock</th>
           <th>Booked Today</th>
-          <th>Unbook</th>
           <th>Edit</th>
           <th>Delete</th>
         </tr>
@@ -622,11 +660,16 @@ async function renderBrokers() {
     });
   });
 
-  document.querySelectorAll(".unbook-btn").forEach((btn) => {
+  document.querySelectorAll(".booked-today-btn").forEach((btn) => {
     btn.addEventListener("click", async (event) => {
-      const brokerName = event.currentTarget.dataset.name;
-      const ok = await unbookBrokerToday(brokerName);
-      message.textContent = ok ? `${brokerName} unbooked for today.` : `Unable to unbook ${brokerName}.`;
+      const brokerName = event.currentTarget.dataset.brokerName;
+      if (!brokerName) return;
+      const wasBooked = event.currentTarget.classList.contains("active");
+      const nextBooked = !wasBooked;
+      const ok = await setBrokerBookedTodayInSupabase(brokerName, nextBooked);
+      message.textContent = ok
+        ? `${brokerName} ${nextBooked ? "marked booked" : "unbooked"} for today.`
+        : `Could not update booked status for ${brokerName}. Check Supabase bookings table and network.`;
       await renderBrokers();
     });
   });
