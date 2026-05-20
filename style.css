@@ -208,12 +208,15 @@ td a {
 }
 
 #broker-list {
-  overflow-x: visible;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 #broker-list table {
   font-size: 12px;
   table-layout: fixed;
+  width: 100%;
+  min-width: 1200px;
 }
 
 #broker-list th,
@@ -386,15 +389,45 @@ td a {
   background: #fef2f2;
 }
 
+#broker-list th:nth-child(11),
+#broker-list td:nth-child(11) {
+  width: 108px;
+  max-width: 108px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(12),
+#broker-list td:nth-child(12) {
+  width: 132px;
+  max-width: 132px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(13),
+#broker-list td:nth-child(13),
+#broker-list th:nth-child(14),
+#broker-list td:nth-child(14) {
+  width: 64px;
+  max-width: 64px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 #broker-list .hard-lock-btn {
   border: 2px solid #dc2626;
   background: #fff;
   color: #b91c1c;
   font-weight: 700;
-  font-size: 12px;
-  padding: 6px 10px;
+  font-size: 11px;
+  padding: 5px 8px;
   border-radius: 8px;
   cursor: pointer;
+  white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 #broker-list .hard-lock-btn:hover {
@@ -417,11 +450,14 @@ td a {
   background: #fff;
   color: #047857;
   font-weight: 700;
-  font-size: 12px;
-  padding: 6px 10px;
+  font-size: 11px;
+  padding: 5px 8px;
   border-radius: 8px;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 #broker-list .booked-today-btn:hover {
