@@ -86,6 +86,38 @@ const SCRIPT_LEAD_TYPES = {
   targeted_leads: "targeted_leads"
 };
 
+const MULTI_UNIT_MIN_LIQUID = 250_000;
+const MULTI_UNIT_MIN_NET_WORTH = 1_000_000;
+const MULTI_UNIT_ANSWER_ID = "multiUnitInterested";
+
+const DEFAULT_MULTI_UNIT_QUESTION = {
+  text: "Are you interested in multi-unit franchise ownership?",
+  yesLabel: "Yes",
+  noLabel: "No"
+};
+
+function normalizeMultiUnitQuestion(multiUnitQuestion) {
+  const source = multiUnitQuestion && typeof multiUnitQuestion === "object" ? multiUnitQuestion : {};
+  return {
+    text: (source.text || DEFAULT_MULTI_UNIT_QUESTION.text).trim() || DEFAULT_MULTI_UNIT_QUESTION.text,
+    yesLabel: (source.yesLabel || DEFAULT_MULTI_UNIT_QUESTION.yesLabel).trim() || "Yes",
+    noLabel: (source.noLabel || DEFAULT_MULTI_UNIT_QUESTION.noLabel).trim() || "No"
+  };
+}
+
+function getMultiUnitQuestion(config) {
+  const mq = normalizeMultiUnitQuestion(config?.multiUnitQuestion);
+  return {
+    id: MULTI_UNIT_ANSWER_ID,
+    text: mq.text,
+    type: "buttons",
+    options: [
+      { label: mq.yesLabel, value: true },
+      { label: mq.noLabel, value: false }
+    ]
+  };
+}
+
 const DEFAULT_OPENING_FRANCHISE_SHOW = `Hey [Name], this is [Your Name].
 You had registered for a ticket to the franchise show. Quick question: are you still exploring the idea of owning your own business?
 
@@ -139,11 +171,20 @@ No problem. Sometimes invites end up in spam or another folder. Could you check 
     { id: "creditScore", text: "Question 4: Would you happen to know what your credit score is?", type: "buttons", options: [{ label: "680-699", value: 680 }, { label: "700-724", value: 700 }, { label: "725+", value: 725 }] },
     { id: "timeline", text: "Question 5: If the right opportunity came up, is this something you'd want to invest now, or 1-3 months, or 3-6 months?", type: "buttons", options: [{ label: "Now", value: "Now" }, { label: "1-3 months", value: "1-3 months" }, { label: "3-6 months", value: "3-6 months" }] },
     { id: "location", text: "Question 6: Where are you located currently, and are you thinking about opening a franchise there or somewhere else?", type: "location" }
-  ]
+  ],
+  multiUnitQuestion: { ...DEFAULT_MULTI_UNIT_QUESTION }
 };
 
 function normalizeBrokerLocation(broker) {
-  if (broker.location_mode && Array.isArray(broker.location_states)) return broker;
+  const flags = {
+    focus_for_date: broker.focus_for_date || null,
+    focus_today: broker.focus_today === true,
+    hard_locked: broker.hard_locked === true,
+    multi_unit_router: broker.multi_unit_router === true
+  };
+  if (broker.location_mode && Array.isArray(broker.location_states)) {
+    return { ...broker, ...flags };
+  }
   let locationMode = "us_wide";
   let locationStates = [];
   if (broker.locations === "non_registration") {
@@ -159,9 +200,7 @@ function normalizeBrokerLocation(broker) {
     ...broker,
     location_mode: locationMode,
     location_states: locationStates,
-    focus_for_date: broker.focus_for_date || null,
-    focus_today: broker.focus_today === true,
-    hard_locked: broker.hard_locked === true
+    ...flags
   };
 }
 
@@ -246,6 +285,7 @@ function normalizeScriptConfig(parsed) {
   if (!parsed.openingScripts.targeted_leads) {
     parsed.openingScripts.targeted_leads = DEFAULT_OPENING_TARGETED_LEADS;
   }
+  parsed.multiUnitQuestion = normalizeMultiUnitQuestion(parsed.multiUnitQuestion);
   return parsed;
 }
 
@@ -328,6 +368,7 @@ const el = {
   scriptPanel: document.getElementById("script-panel"),
   adminPanel: document.getElementById("admin-panel"),
   questionsPanel: document.getElementById("questions-panel"),
+  questionsPanelTitle: document.getElementById("questions-panel-title"),
   resultsPanel: document.getElementById("results-panel"),
   openingScript: document.getElementById("opening-script"),
   scriptLeadTypeLabel: document.getElementById("script-lead-type-label"),
@@ -593,6 +634,58 @@ function matchesLocation(broker, leadState, country) {
   return isBrokerEligibleForState(broker, leadState);
 }
 
+function parseNumericDollars(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return NaN;
+  const trimmed = value.trim();
+  if (!trimmed) return NaN;
+  const lower = trimmed.toLowerCase();
+  const hasKSuffix = /\bk\b/.test(lower) || lower.endsWith("k");
+  const cleaned = lower.replace(/[$,\s]/g, "").replace(/k/g, "");
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) return NaN;
+  if (hasKSuffix && parsed < 1000) return parsed * 1000;
+  return parsed;
+}
+
+function getAnswerDollars(answerId) {
+  return parseNumericDollars(state.answers[answerId]);
+}
+
+function meetsMultiUnitThresholds() {
+  const liquidity = getAnswerDollars("liquidity");
+  const netWorth = getAnswerDollars("netWorth");
+  return (
+    Number.isFinite(liquidity) &&
+    Number.isFinite(netWorth) &&
+    liquidity >= MULTI_UNIT_MIN_LIQUID &&
+    netWorth >= MULTI_UNIT_MIN_NET_WORTH
+  );
+}
+
+function syncMultiUnitAnswerState() {
+  if (!meetsMultiUnitThresholds()) {
+    delete state.answers[MULTI_UNIT_ANSWER_ID];
+  }
+}
+
+function wantsMultiUnitOnlyMatching() {
+  return meetsMultiUnitThresholds() && state.answers[MULTI_UNIT_ANSWER_ID] === true;
+}
+
+/** @returns {{ type: "script", index: number } | { type: "multi_unit" }[]} */
+function getQuestionFlow() {
+  const questions = state.scriptConfig?.questions || [];
+  const flow = [];
+  questions.forEach((q, index) => {
+    flow.push({ type: "script", index });
+    if (q.id === "netWorth" && meetsMultiUnitThresholds()) {
+      flow.push({ type: "multi_unit" });
+    }
+  });
+  return flow;
+}
+
 function isFinancialMatch(broker, lead) {
   return lead.liquidity >= broker.minLiquid &&
     lead.netWorth >= broker.minNetWorth &&
@@ -621,8 +714,53 @@ function filterBrokers(brokers, candidate, ignoreBookingExclusion) {
   return pool;
 }
 
+function updateQuestionsPanelTitle(isMultiUnitStep) {
+  if (!el.questionsPanelTitle) return;
+  if (isMultiUnitStep) {
+    el.questionsPanelTitle.textContent = "Special Question";
+    el.questionsPanelTitle.classList.add("questions-panel-title-special");
+  } else {
+    el.questionsPanelTitle.textContent = "Qualifying Questions";
+    el.questionsPanelTitle.classList.remove("questions-panel-title-special");
+  }
+}
+
 function renderQuestion() {
-  const q = state.scriptConfig.questions[state.step];
+  syncMultiUnitAnswerState();
+  const flow = getQuestionFlow();
+  if (state.step >= flow.length) {
+    state.step = Math.max(0, flow.length - 1);
+  }
+  const current = flow[state.step];
+  if (!current) {
+    el.questionContainer.innerHTML = "<p>Unable to load question.</p>";
+    return;
+  }
+
+  if (current.type === "multi_unit") {
+    updateQuestionsPanelTitle(true);
+    const q = getMultiUnitQuestion(state.scriptConfig);
+    let html = `<p class="question-text"><strong>${q.text}</strong></p>`;
+    html += `<div class="option-grid">` + q.options.map((opt) => {
+      const active = state.answers[q.id] === opt.value ? "active" : "";
+      const valueAttr = opt.value === true ? "true" : "false";
+      return `<button class="option ${active}" data-qid="${q.id}" data-value="${valueAttr}" type="button">${opt.label}</button>`;
+    }).join("") + `</div>`;
+    el.questionContainer.innerHTML = html;
+    el.prevQuestion.disabled = state.step === 0;
+    el.nextQuestion.textContent = state.step === flow.length - 1 ? "Run Matching" : "Continue";
+    document.querySelectorAll(".option").forEach((btn) => {
+      btn.addEventListener("click", (evt) => {
+        const target = evt.currentTarget;
+        state.answers[target.dataset.qid] = target.dataset.value === "true";
+        renderQuestion();
+      });
+    });
+    return;
+  }
+
+  updateQuestionsPanelTitle(false);
+  const q = state.scriptConfig.questions[current.index];
   let html = `<p class="question-text"><strong>${q.text}</strong></p>`;
   if (q.type === "buttons") {
     html += `<div class="option-grid">` + q.options.map((opt) => {
@@ -650,7 +788,7 @@ function renderQuestion() {
   }
   el.questionContainer.innerHTML = html;
   el.prevQuestion.disabled = state.step === 0;
-  el.nextQuestion.textContent = state.step === state.scriptConfig.questions.length - 1 ? "Run Matching" : "Continue";
+  el.nextQuestion.textContent = state.step === flow.length - 1 ? "Run Matching" : "Continue";
   document.querySelectorAll(".option").forEach((btn) => {
     btn.addEventListener("click", (evt) => {
       const target = evt.currentTarget;
@@ -711,11 +849,14 @@ async function refreshLiveState() {
 
 async function runMatching() {
   await refreshLiveState();
+  syncMultiUnitAnswerState();
   const leadState = normalizeState(state.answers.stateInput);
+  const liquidity = getAnswerDollars("liquidity");
+  const netWorth = getAnswerDollars("netWorth");
   const lead = {
-    liquidity: state.answers.liquidity,
+    liquidity: Number.isFinite(liquidity) ? liquidity : state.answers.liquidity,
     status: state.answers.status,
-    netWorth: state.answers.netWorth,
+    netWorth: Number.isFinite(netWorth) ? netWorth : state.answers.netWorth,
     creditScore: state.answers.creditScore,
     timeline: state.answers.timeline,
     city: state.answers.city,
@@ -729,15 +870,27 @@ async function runMatching() {
   const bookedNames = new Set((state.bookingsToday || []).map((row) => row.broker_name));
   const candidate = { lead, bookedNames };
 
-  let eligibleBrokers = filterBrokers(state.brokers, candidate, false);
+  let brokerPool = state.brokers;
+  const multiUnitOnly = wantsMultiUnitOnlyMatching();
+  if (multiUnitOnly) {
+    brokerPool = brokerPool.filter((b) => b.multi_unit_router === true);
+  }
+
+  let eligibleBrokers = filterBrokers(brokerPool, candidate, false);
   let bookingFallbackActive = false;
   if (!eligibleBrokers.length) {
-    eligibleBrokers = filterBrokers(state.brokers, candidate, true);
+    eligibleBrokers = filterBrokers(brokerPool, candidate, true);
     bookingFallbackActive = eligibleBrokers.length > 0;
   }
 
   if (el.matchFallbackBanner) {
-    if (bookingFallbackActive) {
+    if (multiUnitOnly && !brokerPool.length) {
+      el.matchFallbackBanner.textContent = "Lead confirmed multi-unit interest, but no brokers have Multi Unit routing enabled. Enable a broker in Brokers admin or adjust the lead answers.";
+      el.matchFallbackBanner.classList.remove("hidden");
+    } else if (multiUnitOnly && !eligibleBrokers.length) {
+      el.matchFallbackBanner.textContent = "Multi-unit routing is active — only Multi Unit brokers are shown. No eligible matches for this lead (location, credit, booked today, etc.).";
+      el.matchFallbackBanner.classList.remove("hidden");
+    } else if (bookingFallbackActive) {
       el.matchFallbackBanner.textContent = "No available brokers found for today — showing previously booked brokers as fallback. Use with caution.";
       el.matchFallbackBanner.classList.remove("hidden");
     } else {
@@ -750,10 +903,14 @@ async function runMatching() {
   const tier1 = eligibleBrokers.filter(b => FOCUS_LIST.includes(b.name));
   const tier2 = eligibleBrokers.filter(b => !FOCUS_LIST.includes(b.name));
 
+  const multiUnitRow = meetsMultiUnitThresholds()
+    ? `<tr><th>Multi-Unit Interest</th><td>${state.answers[MULTI_UNIT_ANSWER_ID] === true ? "Yes" : state.answers[MULTI_UNIT_ANSWER_ID] === false ? "No" : "—"}</td></tr>`
+    : "";
   el.candidateSummary.innerHTML = `
     <table><tbody>
       <tr><th>Liquidity</th><td>$${lead.liquidity.toLocaleString()}</td></tr>
       <tr><th>Net Worth</th><td>$${lead.netWorth.toLocaleString()}</td></tr>
+      ${multiUnitRow}
       <tr><th>Credit</th><td>${lead.creditScore}+</td></tr>
       <tr><th>Status</th><td>${lead.status}</td></tr>
       <tr><th>Timeline</th><td>${lead.timeline}</td></tr>
@@ -815,6 +972,9 @@ function renderCandidateInfoTable() {
     ["Setter Name", el.setterName.value ? escapeHTML(el.setterName.value) : "—"],
     ["Liquid Capital", typeof a.liquidity === "number" ? `$${a.liquidity.toLocaleString()}` : "—"],
     ["Net Worth", typeof a.netWorth === "number" ? `$${a.netWorth.toLocaleString()}` : "—"],
+    ...(meetsMultiUnitThresholds()
+      ? [["Multi-Unit Interest", a[MULTI_UNIT_ANSWER_ID] === true ? "Yes" : a[MULTI_UNIT_ANSWER_ID] === false ? "No" : "—"]]
+      : []),
     ["Credit Score", a.creditScore ? `${a.creditScore}+` : "—"],
     ["Timeline", a.timeline ? escapeHTML(String(a.timeline)) : "—"],
     ["City", a.city ? escapeHTML(a.city) : "—"],
@@ -921,6 +1081,7 @@ function resetSession() {
   el.scriptPanel.classList.add("hidden");
   el.adminPanel.classList.add("hidden");
   el.questionsPanel.classList.add("hidden");
+  updateQuestionsPanelTitle(false);
   el.resultsPanel.classList.add("hidden");
   el.questionContainer.innerHTML = "";
   el.candidateSummary.innerHTML = "";
@@ -1002,33 +1163,47 @@ el.prevQuestion.addEventListener("click", () => {
 });
 
 el.nextQuestion.addEventListener("click", () => {
-  const q = state.scriptConfig.questions[state.step];
-  if (q.type === "buttons" && state.answers[q.id] === undefined) {
-    alert("Please select an option to continue.");
-    return;
-  }
-  if (q.type === "number_k") {
-    const numberInput = document.getElementById("number-k-input");
-    const raw = numberInput ? Number(numberInput.value) : NaN;
-    if (!Number.isFinite(raw) || raw < 0) {
-      alert("Please enter a valid number.");
+  const flow = getQuestionFlow();
+  const current = flow[state.step];
+  if (!current) return;
+
+  if (current.type === "multi_unit") {
+    if (state.answers[MULTI_UNIT_ANSWER_ID] === undefined) {
+      alert("Please select Yes or No to continue.");
       return;
     }
-    state.answers[q.id] = raw * 1000;
-  }
-  if (q.type === "location") {
-    const city = document.getElementById("city").value.trim();
-    const stateInput = document.getElementById("lead-state").value.trim();
-    const country = document.getElementById("country").value;
-    if (!city || !stateInput) {
-      alert("Please enter city and state/province.");
+  } else {
+    const q = state.scriptConfig.questions[current.index];
+    if (q.type === "buttons" && state.answers[q.id] === undefined) {
+      alert("Please select an option to continue.");
       return;
     }
-    state.answers.city = city;
-    state.answers.stateInput = stateInput;
-    state.answers.country = country;
+    if (q.type === "number_k") {
+      const numberInput = document.getElementById("number-k-input");
+      const raw = numberInput ? Number(numberInput.value) : NaN;
+      if (!Number.isFinite(raw) || raw < 0) {
+        alert("Please enter a valid number.");
+        return;
+      }
+      state.answers[q.id] = raw * 1000;
+    }
+    if (q.type === "location") {
+      const city = document.getElementById("city").value.trim();
+      const stateInput = document.getElementById("lead-state").value.trim();
+      const country = document.getElementById("country").value;
+      if (!city || !stateInput) {
+        alert("Please enter city and state/province.");
+        return;
+      }
+      state.answers.city = city;
+      state.answers.stateInput = stateInput;
+      state.answers.country = country;
+    }
   }
-  if (state.step < state.scriptConfig.questions.length - 1) {
+
+  syncMultiUnitAnswerState();
+
+  if (state.step < flow.length - 1) {
     state.step += 1;
     renderQuestion();
   } else {

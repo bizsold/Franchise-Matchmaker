@@ -59,7 +59,12 @@ No problem. Sometimes invites end up in spam or another folder. Could you check 
     { id: "creditScore", text: "Question 4: Would you happen to know what your credit score is?", type: "buttons", options: [{ label: "680-699", value: 680 }, { label: "700-724", value: 700 }, { label: "725+", value: 725 }] },
     { id: "timeline", text: "Question 5: If the right opportunity came up, is this something you'd want to invest now, or 1-3 months, or 3-6 months?", type: "buttons", options: [{ label: "Now", value: "Now" }, { label: "1-3 months", value: "1-3 months" }, { label: "3-6 months", value: "3-6 months" }] },
     { id: "location", text: "Question 6: Where are you located currently, and are you thinking about opening a franchise there or somewhere else?", type: "location" }
-  ]
+  ],
+  multiUnitQuestion: {
+    text: "Are you interested in multi-unit franchise ownership?",
+    yesLabel: "Yes",
+    noLabel: "No"
+  }
 };
 
 const el = {
@@ -68,6 +73,9 @@ const el = {
   closing: document.getElementById("closing-script-input"),
   handoff: document.getElementById("handoff-script-input"),
   submissionLink: document.getElementById("submission-link-input"),
+  multiUnitQuestionText: document.getElementById("multi-unit-question-text"),
+  multiUnitYesLabel: document.getElementById("multi-unit-yes-label"),
+  multiUnitNoLabel: document.getElementById("multi-unit-no-label"),
   questionsList: document.getElementById("questions-list"),
   newQuestionId: document.getElementById("new-question-id"),
   newQuestionText: document.getElementById("new-question-text"),
@@ -102,6 +110,13 @@ function normalizeConfig(parsed) {
   if (!parsed.openingScripts.targeted_leads) {
     parsed.openingScripts.targeted_leads = DEFAULT_OPENING_TARGETED_LEADS;
   }
+  const defaultMq = DEFAULT_SCRIPT_CONFIG.multiUnitQuestion;
+  const mq = parsed.multiUnitQuestion && typeof parsed.multiUnitQuestion === "object" ? parsed.multiUnitQuestion : {};
+  parsed.multiUnitQuestion = {
+    text: (mq.text || defaultMq.text).trim() || defaultMq.text,
+    yesLabel: (mq.yesLabel || defaultMq.yesLabel).trim() || "Yes",
+    noLabel: (mq.noLabel || defaultMq.noLabel).trim() || "No"
+  };
   return parsed;
 }
 
@@ -151,6 +166,10 @@ function renderForm() {
   el.closing.value = config.closingScript || "";
   el.handoff.value = config.handoffScript || "";
   el.submissionLink.value = config.submissionLink || "";
+  const mq = config.multiUnitQuestion || DEFAULT_SCRIPT_CONFIG.multiUnitQuestion;
+  el.multiUnitQuestionText.value = mq.text || "";
+  el.multiUnitYesLabel.value = mq.yesLabel || "Yes";
+  el.multiUnitNoLabel.value = mq.noLabel || "No";
   renderQuestions();
 }
 
@@ -285,6 +304,11 @@ el.saveBtn.addEventListener("click", async () => {
   config.closingScript = el.closing.value;
   config.handoffScript = el.handoff.value;
   config.submissionLink = el.submissionLink.value;
+  config.multiUnitQuestion = {
+    text: el.multiUnitQuestionText.value.trim(),
+    yesLabel: el.multiUnitYesLabel.value.trim() || "Yes",
+    noLabel: el.multiUnitNoLabel.value.trim() || "No"
+  };
   localStorage.setItem(SCRIPT_STORAGE_KEY, JSON.stringify(config));
   try {
     sessionStorage.setItem(SCRIPT_STORAGE_KEY, JSON.stringify(config));

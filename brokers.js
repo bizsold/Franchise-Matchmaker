@@ -372,8 +372,34 @@ async function setBrokerBookedTodayInSupabase(brokerName, booked) {
   return unbookBrokerToday(brokerName);
 }
 
+async function setBrokerMultiUnitRouterInSupabase(brokerName, enabled) {
+  const supabaseBrokers = await fetchBrokersFromSupabase();
+  const brokers = supabaseBrokers?.length ? supabaseBrokers : readBrokers();
+  const broker = brokers.find((b) => b.name === brokerName);
+  if (!broker) return false;
+  const updated = { ...broker, multi_unit_router: enabled === true };
+  const result = await upsertBrokerToSupabase(updated);
+  if (result.ok) {
+    const local = readBrokers();
+    const idx = local.findIndex((b) => b.name === brokerName);
+    if (idx >= 0) {
+      local[idx] = { ...local[idx], multi_unit_router: enabled === true };
+      saveBrokers(local);
+    }
+  }
+  return result.ok;
+}
+
 function normalizeBrokerLocation(broker) {
-  if (broker.location_mode && Array.isArray(broker.location_states)) return broker;
+  const flags = {
+    focus_for_date: broker.focus_for_date || null,
+    focus_today: broker.focus_today === true,
+    hard_locked: broker.hard_locked === true,
+    multi_unit_router: broker.multi_unit_router === true
+  };
+  if (broker.location_mode && Array.isArray(broker.location_states)) {
+    return { ...broker, ...flags };
+  }
   const locationStates = Array.isArray(broker.exclude) ? broker.exclude : (Array.isArray(broker.include) ? broker.include : []);
   let mode = "us_wide";
   if (broker.locations === "non_registration") mode = "non_registration_only";
@@ -383,9 +409,7 @@ function normalizeBrokerLocation(broker) {
     ...broker,
     location_mode: mode,
     location_states: locationStates,
-    focus_for_date: broker.focus_for_date || null,
-    focus_today: broker.focus_today === true,
-    hard_locked: broker.hard_locked === true
+    ...flags
   };
 }
 
@@ -538,6 +562,8 @@ function fillFormForEdit(broker, index) {
   document.getElementById("status").value = (broker.requiresStatus || []).join(", ");
   document.getElementById("special-requests").value = broker.specialRequests || "";
   document.getElementById("booking-link").value = broker.booking || "";
+  const multiUnitEl = document.getElementById("multi-unit-router");
+  if (multiUnitEl) multiUnitEl.checked = broker.multi_unit_router === true;
   locationModeSelect.value = broker.location_mode || "us_wide";
   updateLocationPicker(broker.location_states || []);
   saveBrokerBtn.textContent = "Save Broker";
@@ -601,6 +627,7 @@ async function renderBrokers() {
         <td>${broker.specialRequests || ""}</td>
         <td><a href="${broker.booking}" target="_blank" rel="noopener noreferrer">${broker.booking}</a></td>
         <td><input class="focus-today-checkbox" type="checkbox" data-index="${originalIndex}" data-broker-focus="${broker.name}" ${broker.focus_today === true ? "checked" : ""} /></td>
+        <td><input class="multi-unit-checkbox" type="checkbox" data-broker-name="${escapeAttr(broker.name || "")}" title="Multi-unit lead router" ${broker.multi_unit_router === true ? "checked" : ""} /></td>
         <td><button type="button" class="hard-lock-btn${locked ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Hard lock: exclude from all matching">${locked ? "🔒 Locked" : "🔒 Hard Lock"}</button></td>
         <td><button type="button" class="booked-today-btn${bookedToday ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Mark as booked for today (EST)">${bookedToday ? "✓ Booked Today" : "Mark Booked"}</button></td>
         <td><button class="icon-btn edit-btn" data-index="${originalIndex}" title="Edit">✏️</button></td>
@@ -623,6 +650,7 @@ async function renderBrokers() {
           <th>Special Requests</th>
           <th>Booking Link</th>
           <th>Focus</th>
+          <th>Multi Unit</th>
           <th>Hard Lock</th>
           <th>Booked Today</th>
           <th>Edit</th>
@@ -688,6 +716,23 @@ async function renderBrokers() {
     });
   });
 
+  document.querySelectorAll(".multi-unit-checkbox").forEach((cb) => {
+    cb.addEventListener("change", async (event) => {
+      const brokerName = event.currentTarget.dataset.brokerName;
+      if (!brokerName) return;
+      const enabled = event.currentTarget.checked;
+      const ok = await setBrokerMultiUnitRouterInSupabase(brokerName, enabled);
+      message.textContent = ok
+        ? `${brokerName} ${enabled ? "enabled" : "disabled"} for multi-unit routing.`
+        : `Could not update multi-unit flag for ${brokerName}. Check Supabase brokers table and network.`;
+      if (!ok) {
+        event.currentTarget.checked = !enabled;
+        return;
+      }
+      await renderBrokers();
+    });
+  });
+
   document.querySelectorAll(".focus-today-checkbox").forEach((cb) => {
     cb.addEventListener("change", () => {
       const draft = readFocusDraft() || {};
@@ -710,6 +755,7 @@ form.addEventListener("submit", async (event) => {
   const statusText = document.getElementById("status").value.trim();
   const specialRequests = document.getElementById("special-requests").value.trim();
   const booking = document.getElementById("booking-link").value.trim();
+  const multiUnitRouter = document.getElementById("multi-unit-router")?.checked === true;
 
   if (!name || !booking) {
     message.textContent = "Please complete all required fields.";
@@ -726,7 +772,8 @@ form.addEventListener("submit", async (event) => {
     location_states: locationStates,
     requiresStatus: parseStatus(statusText),
     specialRequests,
-    booking
+    booking,
+    multi_unit_router: multiUnitRouter
   };
 
   let savedBroker;

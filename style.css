@@ -267,6 +267,16 @@ td a {
   line-height: 1.45;
 }
 
+#questions-panel-title.questions-panel-title-special {
+  display: inline-block;
+  background: #fef08a;
+  color: #713f12;
+  border: 2px solid #eab308;
+  border-radius: 8px;
+  padding: 6px 14px;
+  margin: 0 0 12px;
+}
+
 .submission-btn {
   display: inline-block;
   background: #175cd3;
@@ -400,24 +410,33 @@ td a {
 
 #broker-list th:nth-child(11),
 #broker-list td:nth-child(11) {
-  width: 108px;
-  max-width: 108px;
+  width: 72px;
+  max-width: 72px;
+  text-align: center;
   white-space: nowrap;
   vertical-align: middle;
 }
 
 #broker-list th:nth-child(12),
 #broker-list td:nth-child(12) {
+  width: 108px;
+  max-width: 108px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(13),
+#broker-list td:nth-child(13) {
   width: 132px;
   max-width: 132px;
   white-space: nowrap;
   vertical-align: middle;
 }
 
-#broker-list th:nth-child(13),
-#broker-list td:nth-child(13),
 #broker-list th:nth-child(14),
-#broker-list td:nth-child(14) {
+#broker-list td:nth-child(14),
+#broker-list th:nth-child(15),
+#broker-list td:nth-child(15) {
   width: 64px;
   max-width: 64px;
   white-space: nowrap;
