@@ -81,8 +81,12 @@ const DEFAULT_BROKERS = [
   { name: "John Boland", minLiquid: 100000, minNetWorth: 250000, minCredit: 700, requiresStatus: ["US Citizen", "Green Card"], locations: "us_wide", booking: "https://jboland.esourcecoach.com/schedule-a-call/" }
 ];
 
-const DEFAULT_SCRIPT_CONFIG = {
-  openingScript: `Hey [Name], this is [Your Name].
+const SCRIPT_LEAD_TYPES = {
+  franchise_show: "franchise_show",
+  targeted_leads: "targeted_leads"
+};
+
+const DEFAULT_OPENING_FRANCHISE_SHOW = `Hey [Name], this is [Your Name].
 You had registered for a ticket to the franchise show. Quick question: are you still exploring the idea of owning your own business?
 
 The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
@@ -95,7 +99,28 @@ Do you have any experience in franchising?
 
 Have you looked at specific industries yet, or are you exploring?
 
-Is there a particular reason why now feels like the right time to look at this?`,
+Is there a particular reason why now feels like the right time to look at this?`;
+
+const DEFAULT_OPENING_TARGETED_LEADS = `Hey [Name], this is [Your Name].
+I'm reaching out because you had shown interest in exploring franchise ownership. Quick question: are you still interested in learning more about owning your own business?
+
+The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
+
+What got you interested in looking at franchises?
+
+Are you looking to leave your current job, add income alongside it, or is this more of a longer-term plan?
+
+Do you have any experience in franchising?
+
+Have you looked at specific industries yet, or are you exploring?
+
+Is there a particular reason why now feels like the right time to look at this?`;
+
+const DEFAULT_SCRIPT_CONFIG = {
+  openingScripts: {
+    franchise_show: DEFAULT_OPENING_FRANCHISE_SHOW,
+    targeted_leads: DEFAULT_OPENING_TARGETED_LEADS
+  },
   closingScript: "Great news - you would be a perfect fit for a conversation with one of our franchise advisors. Their role is to help you identify 2-3 brands that match your goals, budget and lifestyle. Just to confirm, you are in [Timezone] time? Let's get you booked in for a quick 15-30 minute call. There's no cost to you. I have [Day] at [Time] or [Day] at [Time], which works better for you? Is there anyone else who you'd like to bring on the call with you?",
   submissionLink: "https://api.leadconnectorhq.com/widget/survey/84dPjYE2rtzUulOqrxRQ",
   handoffScript: `Great! I just want to make sure you received the calendar invite from [Advisor Name] and it's on your schedule. [Advisor Name] has limited availability, and I want to make sure you get a spot that works for you.
@@ -201,24 +226,46 @@ function getMasterBrokers() {
   return normalizedDefaults;
 }
 
+function normalizeScriptConfig(parsed) {
+  if (!parsed || !Array.isArray(parsed.questions)) return null;
+  parsed.questions = parsed.questions.map((q) => {
+    if (q.id === "liquidity" || q.id === "netWorth") {
+      return { ...q, type: "number_k", options: undefined };
+    }
+    return q;
+  });
+  if (!parsed.openingScripts || typeof parsed.openingScripts !== "object") {
+    parsed.openingScripts = {};
+  }
+  if (parsed.openingScript && !parsed.openingScripts.franchise_show) {
+    parsed.openingScripts.franchise_show = parsed.openingScript;
+  }
+  if (!parsed.openingScripts.franchise_show) {
+    parsed.openingScripts.franchise_show = DEFAULT_OPENING_FRANCHISE_SHOW;
+  }
+  if (!parsed.openingScripts.targeted_leads) {
+    parsed.openingScripts.targeted_leads = DEFAULT_OPENING_TARGETED_LEADS;
+  }
+  return parsed;
+}
+
+function getOpeningScriptText(config, leadType) {
+  const scripts = config?.openingScripts;
+  if (scripts && scripts[leadType]) return scripts[leadType];
+  if (leadType === SCRIPT_LEAD_TYPES.franchise_show && config?.openingScript) {
+    return config.openingScript;
+  }
+  return scripts?.franchise_show || config?.openingScript || "";
+}
+
 function getScriptConfig() {
   const tryParsedConfig = (raw) => {
     if (!raw) return null;
     try {
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.questions)) {
-        parsed.questions = parsed.questions.map((q) => {
-          if (q.id === "liquidity" || q.id === "netWorth") {
-            return { ...q, type: "number_k", options: undefined };
-          }
-          return q;
-        });
-        return parsed;
-      }
+      return normalizeScriptConfig(JSON.parse(raw));
     } catch (err) {
       return null;
     }
-    return null;
   };
 
   // Sync from script page when navigating back in same tab.
@@ -259,6 +306,7 @@ function getScriptConfig() {
 const state = {
   role: "setter",
   isAdmin: false,
+  leadType: SCRIPT_LEAD_TYPES.franchise_show,
   answers: {},
   step: 0,
   bookingsToday: [],
@@ -274,12 +322,15 @@ const el = {
   setterNameRow: document.getElementById("setter-name-row"),
   adminCode: document.getElementById("admin-code"),
   setterName: document.getElementById("setter-name"),
+  leadTypeRow: document.getElementById("lead-type-row"),
+  leadType: document.getElementById("lead-type"),
   startSession: document.getElementById("start-session"),
   scriptPanel: document.getElementById("script-panel"),
   adminPanel: document.getElementById("admin-panel"),
   questionsPanel: document.getElementById("questions-panel"),
   resultsPanel: document.getElementById("results-panel"),
   openingScript: document.getElementById("opening-script"),
+  scriptLeadTypeLabel: document.getElementById("script-lead-type-label"),
   nextToQualifying: document.getElementById("next-to-qualifying"),
   questionContainer: document.getElementById("question-container"),
   prevQuestion: document.getElementById("prev-question"),
@@ -484,15 +535,7 @@ class BookingStore {
         .eq("id", 1)
         .maybeSingle();
       if (error || !data || !data.config) return null;
-      const parsed = data.config;
-      if (!parsed || !Array.isArray(parsed.questions)) return null;
-      parsed.questions = parsed.questions.map((q) => {
-        if (q.id === "liquidity" || q.id === "netWorth") {
-          return { ...q, type: "number_k", options: undefined };
-        }
-        return q;
-      });
-      return parsed;
+      return normalizeScriptConfig(data.config);
     } catch (e) {
       return null;
     }
@@ -855,7 +898,8 @@ function showConfirmation(brokerName) {
 }
 
 function openingText(setterName) {
-  const base = state.scriptConfig.openingScript.replace("[Your Name]", setterName || "[Your Name]");
+  const raw = getOpeningScriptText(state.scriptConfig, state.leadType);
+  const base = raw.replace("[Your Name]", setterName || "[Your Name]");
   // Enforce one blank line after the opener line for readability.
   return base.replace(/(\[Your Name\]\.?)(\n)(?!\n)/, "$1\n\n");
 }
@@ -866,11 +910,14 @@ function resetSession() {
   state.bookingsToday = [];
   state.db = null;
   state.lastBooking = null;
+  state.leadType = SCRIPT_LEAD_TYPES.franchise_show;
   el.setterName.value = "";
   el.adminCode.value = "";
   el.role.value = "setter";
+  if (el.leadType) el.leadType.value = SCRIPT_LEAD_TYPES.franchise_show;
   el.adminCodeRow.classList.add("hidden");
   el.setterNameRow.classList.remove("hidden");
+  if (el.leadTypeRow) el.leadTypeRow.classList.remove("hidden");
   el.scriptPanel.classList.add("hidden");
   el.adminPanel.classList.add("hidden");
   el.questionsPanel.classList.add("hidden");
@@ -898,6 +945,7 @@ el.role.addEventListener("change", () => {
   const isAdmin = el.role.value === "admin";
   el.adminCodeRow.classList.toggle("hidden", !isAdmin);
   el.setterNameRow.classList.toggle("hidden", isAdmin);
+  if (el.leadTypeRow) el.leadTypeRow.classList.toggle("hidden", isAdmin);
   if (isAdmin) {
     el.adminCode.value = "";
     setTimeout(() => {
@@ -913,6 +961,7 @@ el.startSession.addEventListener("click", async () => {
     alert("Admin code invalid.");
     return;
   }
+  state.leadType = el.leadType?.value || SCRIPT_LEAD_TYPES.franchise_show;
   state.db = new BookingStore();
   await refreshLiveState();
   state.bookingsToday = await state.db.fetchTodayBookings();
@@ -922,6 +971,13 @@ el.startSession.addEventListener("click", async () => {
     el.questionsPanel.classList.add("hidden");
     el.resultsPanel.classList.add("hidden");
     return;
+  }
+  const leadTypeLabels = {
+    [SCRIPT_LEAD_TYPES.franchise_show]: "Franchise Show",
+    [SCRIPT_LEAD_TYPES.targeted_leads]: "Targeted Leads"
+  };
+  if (el.scriptLeadTypeLabel) {
+    el.scriptLeadTypeLabel.textContent = `Opening — ${leadTypeLabels[state.leadType] || state.leadType}`;
   }
   el.openingScript.textContent = openingText(el.setterName.value);
   el.scriptPanel.classList.remove("hidden");

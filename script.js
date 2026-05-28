@@ -6,8 +6,7 @@ const supabaseClient = window.supabase?.createClient
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null;
 
-const DEFAULT_SCRIPT_CONFIG = {
-  openingScript: `Hey [Name], this is [Your Name].
+const DEFAULT_OPENING_FRANCHISE_SHOW = `Hey [Name], this is [Your Name].
 You had registered for a ticket to the franchise show. Quick question: are you still exploring the idea of owning your own business?
 
 The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
@@ -20,7 +19,28 @@ Do you have any experience in franchising?
 
 Have you looked at specific industries yet, or are you exploring?
 
-Is there a particular reason why now feels like the right time to look at this?`,
+Is there a particular reason why now feels like the right time to look at this?`;
+
+const DEFAULT_OPENING_TARGETED_LEADS = `Hey [Name], this is [Your Name].
+I'm reaching out because you had shown interest in exploring franchise ownership. Quick question: are you still interested in learning more about owning your own business?
+
+The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
+
+What got you interested in looking at franchises?
+
+Are you looking to leave your current job, add income alongside it, or is this more of a longer-term plan?
+
+Do you have any experience in franchising?
+
+Have you looked at specific industries yet, or are you exploring?
+
+Is there a particular reason why now feels like the right time to look at this?`;
+
+const DEFAULT_SCRIPT_CONFIG = {
+  openingScripts: {
+    franchise_show: DEFAULT_OPENING_FRANCHISE_SHOW,
+    targeted_leads: DEFAULT_OPENING_TARGETED_LEADS
+  },
   closingScript: "Great news - you would be a perfect fit for a conversation with one of our franchise advisors. Their role is to help you identify 2-3 brands that match your goals, budget and lifestyle. Just to confirm, you are in [Timezone] time? Let's get you booked in for a quick 15-30 minute call. There's no cost to you. I have [Day] at [Time] or [Day] at [Time], which works better for you? Is there anyone else who you'd like to bring on the call with you?",
   submissionLink: "https://api.leadconnectorhq.com/widget/survey/84dPjYE2rtzUulOqrxRQ",
   handoffScript: `Great! I just want to make sure you received the calendar invite from [Advisor Name] and it's on your schedule. [Advisor Name] has limited availability, and I want to make sure you get a spot that works for you.
@@ -43,7 +63,8 @@ No problem. Sometimes invites end up in spam or another folder. Could you check 
 };
 
 const el = {
-  opening: document.getElementById("opening-script-input"),
+  openingFranchiseShow: document.getElementById("opening-franchise-show-input"),
+  openingTargetedLeads: document.getElementById("opening-targeted-leads-input"),
   closing: document.getElementById("closing-script-input"),
   handoff: document.getElementById("handoff-script-input"),
   submissionLink: document.getElementById("submission-link-input"),
@@ -69,6 +90,18 @@ function normalizeConfig(parsed) {
     }
     return q;
   });
+  if (!parsed.openingScripts || typeof parsed.openingScripts !== "object") {
+    parsed.openingScripts = {};
+  }
+  if (parsed.openingScript && !parsed.openingScripts.franchise_show) {
+    parsed.openingScripts.franchise_show = parsed.openingScript;
+  }
+  if (!parsed.openingScripts.franchise_show) {
+    parsed.openingScripts.franchise_show = DEFAULT_OPENING_FRANCHISE_SHOW;
+  }
+  if (!parsed.openingScripts.targeted_leads) {
+    parsed.openingScripts.targeted_leads = DEFAULT_OPENING_TARGETED_LEADS;
+  }
   return parsed;
 }
 
@@ -112,7 +145,9 @@ function updateQuestionOptionsVisibility() {
 }
 
 function renderForm() {
-  el.opening.value = config.openingScript || "";
+  const openers = config.openingScripts || {};
+  el.openingFranchiseShow.value = openers.franchise_show || "";
+  el.openingTargetedLeads.value = openers.targeted_leads || "";
   el.closing.value = config.closingScript || "";
   el.handoff.value = config.handoffScript || "";
   el.submissionLink.value = config.submissionLink || "";
@@ -242,7 +277,11 @@ el.saveBtn.addEventListener("click", async () => {
       renderQuestions();
     }
   }
-  config.openingScript = el.opening.value;
+  config.openingScripts = {
+    franchise_show: el.openingFranchiseShow.value,
+    targeted_leads: el.openingTargetedLeads.value
+  };
+  delete config.openingScript;
   config.closingScript = el.closing.value;
   config.handoffScript = el.handoff.value;
   config.submissionLink = el.submissionLink.value;

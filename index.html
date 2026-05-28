@@ -31,6 +31,13 @@
           <label for="setter-name">Your Name</label>
           <input id="setter-name" type="text" placeholder="Setter first name" />
         </div>
+        <div class="row" id="lead-type-row">
+          <label for="lead-type">Lead type</label>
+          <select id="lead-type">
+            <option value="franchise_show">Franchise Show</option>
+            <option value="targeted_leads">Targeted Leads</option>
+          </select>
+        </div>
         <div class="row">
           <button id="start-session">Start</button>
         </div>
@@ -38,6 +45,7 @@
 
       <section class="panel hidden" id="script-panel">
         <h2>Script</h2>
+        <p class="subtitle" id="script-lead-type-label"></p>
         <pre id="opening-script" class="script-text"></pre>
         <button id="next-to-qualifying">Next</button>
       </section>
