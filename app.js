@@ -88,6 +88,17 @@ const SCRIPT_LEAD_TYPES = {
 
 const MULTI_UNIT_MIN_LIQUID = 250_000;
 const MULTI_UNIT_MIN_NET_WORTH = 1_000_000;
+
+const LIQUIDITY_PASS_MIN = 75_000;
+const NET_WORTH_PASS_MIN = 200_000;
+
+const UNQUALIFIED_STATUS_LABELS = {
+  liquidity_under_25k: "Liquid capital under $25K",
+  liquidity_under_50k: "Liquid capital under $50K",
+  liquidity_under_75k: "Liquid capital under $75K",
+  net_worth_under_100k: "Net worth under $100K",
+  net_worth_under_200k: "Net worth under $200K"
+};
 const MULTI_UNIT_ANSWER_ID = "multiUnitInterested";
 
 const DEFAULT_MULTI_UNIT_QUESTION = {
@@ -353,7 +364,10 @@ const state = {
   brokers: [],
   scriptConfig: DEFAULT_SCRIPT_CONFIG,
   db: null,
-  lastBooking: null
+  lastBooking: null,
+  unqualifiedStatus: null,
+  unqualifiedExportText: "",
+  unqualifiedReturnStep: 0
 };
 
 const el = {
@@ -389,7 +403,19 @@ const el = {
   confirmationSubmissionLink: document.getElementById("confirmation-submission-link"),
   confirmationHandoffScript: document.getElementById("confirmation-handoff-script"),
   confirmationGoBack: document.getElementById("confirmation-go-back"),
-  startNewSession: document.getElementById("start-new-session")
+  startNewSession: document.getElementById("start-new-session"),
+  unqualifiedPanel: document.getElementById("unqualified-panel"),
+  unqualifiedReason: document.getElementById("unqualified-reason"),
+  unqualifiedForm: document.getElementById("unqualified-form"),
+  unqualifiedNotes: document.getElementById("unqualified-notes"),
+  unqualifiedSubmit: document.getElementById("unqualified-submit"),
+  unqualifiedExport: document.getElementById("unqualified-export"),
+  unqualifiedMarkerPreview: document.getElementById("unqualified-marker-preview"),
+  unqualifiedCopy: document.getElementById("unqualified-copy"),
+  unqualifiedBack: document.getElementById("unqualified-back"),
+  unqualifiedBackExport: document.getElementById("unqualified-back-export"),
+  unqualifiedRestart: document.getElementById("unqualified-restart"),
+  unqualifiedCopyMessage: document.getElementById("unqualified-copy-message")
 };
 
 // Establish "setter" as the initial history entry so back from confirmation lands here.
@@ -650,6 +676,137 @@ function parseNumericDollars(value) {
 
 function getAnswerDollars(answerId) {
   return parseNumericDollars(state.answers[answerId]);
+}
+
+function getLiquidityDisqualifyStatus(dollars) {
+  if (!Number.isFinite(dollars) || dollars >= LIQUIDITY_PASS_MIN) return null;
+  if (dollars < 25_000) return "liquidity_under_25k";
+  if (dollars < 50_000) return "liquidity_under_50k";
+  return "liquidity_under_75k";
+}
+
+function getNetWorthDisqualifyStatus(dollars) {
+  if (!Number.isFinite(dollars) || dollars >= NET_WORTH_PASS_MIN) return null;
+  if (dollars < 100_000) return "net_worth_under_100k";
+  return "net_worth_under_200k";
+}
+
+function getDisqualifyStatusAfterQuestion(questionId) {
+  if (questionId === "liquidity") {
+    return getLiquidityDisqualifyStatus(getAnswerDollars("liquidity"));
+  }
+  if (questionId === "netWorth") {
+    return getNetWorthDisqualifyStatus(getAnswerDollars("netWorth"));
+  }
+  return null;
+}
+
+function getUnqualifiedFinancialValues() {
+  const liquidity = getAnswerDollars("liquidity");
+  const netWorth = getAnswerDollars("netWorth");
+  return {
+    liquidity: Number.isFinite(liquidity) ? liquidity : null,
+    netWorth: Number.isFinite(netWorth) ? netWorth : null
+  };
+}
+
+function buildUnqualifiedMarkerBlock(status, notes) {
+  const { liquidity, netWorth } = getUnqualifiedFinancialValues();
+  const date = currentDateEST();
+  const liquidityLine = liquidity !== null ? String(liquidity) : "";
+  const netWorthLine = netWorth !== null ? String(netWorth) : "";
+  const notesForLine = notes.replace(/\r?\n/g, " ").trim();
+  return `status: ${status}\nliquidity: ${liquidityLine}\nnetWorth: ${netWorthLine}\nnotes: ${notesForLine}\ndate: ${date}`;
+}
+
+function hideSetterFlowPanels() {
+  const sessionPanel = document.getElementById("session-panel");
+  if (sessionPanel) sessionPanel.classList.add("hidden");
+  el.scriptPanel.classList.add("hidden");
+  el.adminPanel.classList.add("hidden");
+  el.questionsPanel.classList.add("hidden");
+  el.resultsPanel.classList.add("hidden");
+  if (el.confirmationPanel) el.confirmationPanel.classList.add("hidden");
+  if (el.unqualifiedPanel) el.unqualifiedPanel.classList.add("hidden");
+}
+
+function returnFromUnqualifiedToQuestions() {
+  state.unqualifiedStatus = null;
+  state.unqualifiedExportText = "";
+  hideSetterFlowPanels();
+  el.questionsPanel.classList.remove("hidden");
+  updateQuestionsPanelTitle(false);
+  renderQuestion();
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function returnFromUnqualifiedExportToForm() {
+  if (el.unqualifiedForm) el.unqualifiedForm.classList.remove("hidden");
+  if (el.unqualifiedExport) el.unqualifiedExport.classList.add("hidden");
+  if (el.unqualifiedCopyMessage) el.unqualifiedCopyMessage.textContent = "";
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function showUnqualifiedPanel(status) {
+  state.unqualifiedReturnStep = state.step;
+  state.unqualifiedStatus = status;
+  state.unqualifiedExportText = "";
+  hideSetterFlowPanels();
+  if (!el.unqualifiedPanel) return;
+  el.unqualifiedPanel.classList.remove("hidden");
+  if (el.unqualifiedReason) {
+    const label = UNQUALIFIED_STATUS_LABELS[status] || status;
+    el.unqualifiedReason.textContent = `Reason: ${label}. Add call notes, then submit.`;
+  }
+  if (el.unqualifiedForm) el.unqualifiedForm.classList.remove("hidden");
+  if (el.unqualifiedExport) el.unqualifiedExport.classList.add("hidden");
+  if (el.unqualifiedNotes) el.unqualifiedNotes.value = "";
+  if (el.unqualifiedCopyMessage) el.unqualifiedCopyMessage.textContent = "";
+  if (el.unqualifiedMarkerPreview) el.unqualifiedMarkerPreview.textContent = "";
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function finalizeUnqualifiedExport(notes) {
+  const status = state.unqualifiedStatus;
+  if (!status) return;
+  const markerBlock = buildUnqualifiedMarkerBlock(status, notes);
+  state.unqualifiedExportText = markerBlock;
+  if (el.unqualifiedForm) el.unqualifiedForm.classList.add("hidden");
+  if (el.unqualifiedExport) el.unqualifiedExport.classList.remove("hidden");
+  if (el.unqualifiedMarkerPreview) el.unqualifiedMarkerPreview.textContent = markerBlock;
+  if (el.unqualifiedCopyMessage) el.unqualifiedCopyMessage.textContent = "";
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+async function copyUnqualifiedExportBlock() {
+  const text = state.unqualifiedExportText;
+  if (!text) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function showUnqualifiedCopyFeedback(ok) {
+  const btn = el.unqualifiedCopy;
+  if (!btn) return;
+  const original = btn.dataset.defaultLabel || btn.textContent;
+  btn.dataset.defaultLabel = original;
+  btn.textContent = ok ? "Copied!" : "Copy";
+  btn.classList.toggle("is-copied", ok);
+  if (ok) {
+    setTimeout(() => {
+      btn.textContent = btn.dataset.defaultLabel || "Copy";
+      btn.classList.remove("is-copied");
+    }, 2000);
+  }
+  if (el.unqualifiedCopyMessage) {
+    el.unqualifiedCopyMessage.textContent = ok
+      ? ""
+      : "Could not copy automatically. Select the text in the box and copy manually.";
+  }
 }
 
 function meetsMultiUnitThresholds() {
@@ -1070,6 +1227,9 @@ function resetSession() {
   state.bookingsToday = [];
   state.db = null;
   state.lastBooking = null;
+  state.unqualifiedStatus = null;
+  state.unqualifiedExportText = "";
+  state.unqualifiedReturnStep = 0;
   state.leadType = SCRIPT_LEAD_TYPES.franchise_show;
   el.setterName.value = "";
   el.adminCode.value = "";
@@ -1096,6 +1256,13 @@ function resetSession() {
     el.confirmationPanel.classList.add("hidden");
     el.confirmationBrokerInfo.innerHTML = "";
     el.confirmationCandidateInfo.innerHTML = "";
+  }
+  if (el.unqualifiedPanel) {
+    el.unqualifiedPanel.classList.add("hidden");
+    if (el.unqualifiedForm) el.unqualifiedForm.classList.remove("hidden");
+    if (el.unqualifiedExport) el.unqualifiedExport.classList.add("hidden");
+    if (el.unqualifiedNotes) el.unqualifiedNotes.value = "";
+    if (el.unqualifiedCopyMessage) el.unqualifiedCopyMessage.textContent = "";
   }
   const sessionPanel = document.getElementById("session-panel");
   if (sessionPanel) sessionPanel.classList.remove("hidden");
@@ -1199,6 +1366,12 @@ el.nextQuestion.addEventListener("click", () => {
       state.answers.stateInput = stateInput;
       state.answers.country = country;
     }
+
+    const disqualifyStatus = getDisqualifyStatusAfterQuestion(q.id);
+    if (disqualifyStatus) {
+      showUnqualifiedPanel(disqualifyStatus);
+      return;
+    }
   }
 
   syncMultiUnitAnswerState();
@@ -1214,6 +1387,43 @@ el.nextQuestion.addEventListener("click", () => {
 el.restartSession.addEventListener("click", () => {
   resetSession();
 });
+
+if (el.unqualifiedBack) {
+  el.unqualifiedBack.addEventListener("click", () => {
+    returnFromUnqualifiedToQuestions();
+  });
+}
+
+if (el.unqualifiedBackExport) {
+  el.unqualifiedBackExport.addEventListener("click", () => {
+    returnFromUnqualifiedExportToForm();
+  });
+}
+
+if (el.unqualifiedSubmit) {
+  el.unqualifiedSubmit.addEventListener("click", () => {
+    const notes = el.unqualifiedNotes?.value.trim() || "";
+    if (!notes) {
+      alert("Please enter call notes before submitting.");
+      return;
+    }
+    finalizeUnqualifiedExport(notes);
+  });
+}
+
+if (el.unqualifiedCopy) {
+  el.unqualifiedCopy.addEventListener("click", async () => {
+    const ok = await copyUnqualifiedExportBlock();
+    showUnqualifiedCopyFeedback(ok);
+  });
+}
+
+if (el.unqualifiedRestart) {
+  el.unqualifiedRestart.addEventListener("click", () => {
+    resetSession();
+    try { history.replaceState({ view: "setter" }, ""); } catch (err) { /* ignore */ }
+  });
+}
 
 if (el.startNewSession) {
   el.startNewSession.addEventListener("click", () => {

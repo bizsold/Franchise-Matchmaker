@@ -82,6 +82,33 @@
         </div>
       </section>
 
+      <section class="panel hidden" id="unqualified-panel">
+        <h2>Unqualified Lead</h2>
+        <p class="subtitle" id="unqualified-reason"></p>
+        <div id="unqualified-form">
+          <div class="row stack">
+            <label for="unqualified-notes">Call notes</label>
+            <textarea id="unqualified-notes" rows="6" placeholder="Notes from the call..."></textarea>
+          </div>
+          <div class="row">
+            <button id="unqualified-back" class="secondary" type="button">Back</button>
+            <button id="unqualified-submit" type="button">Submit</button>
+          </div>
+        </div>
+        <div id="unqualified-export" class="hidden">
+          <p class="subtitle">Copy the block below and paste it into Additional Information in Hot Prospector, then select the Unqualified disposition.</p>
+          <div class="copyable-block" id="unqualified-copyable-block">
+            <button type="button" class="copyable-block-btn" id="unqualified-copy" aria-label="Copy to clipboard">Copy</button>
+            <pre id="unqualified-marker-preview" class="copyable-block-content"></pre>
+          </div>
+          <div class="row">
+            <button id="unqualified-back-export" class="secondary" type="button">Back</button>
+            <button id="unqualified-restart" class="secondary" type="button">Restart</button>
+          </div>
+          <p id="unqualified-copy-message" class="subtitle"></p>
+        </div>
+      </section>
+
       <section class="panel hidden" id="confirmation-panel">
         <h2>Booking Confirmed</h2>
         <div class="row">
