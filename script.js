@@ -36,10 +36,26 @@ Have you looked at specific industries yet, or are you exploring?
 
 Is there a particular reason why now feels like the right time to look at this?`;
 
+const DEFAULT_OPENING_DIRECTORY_LEADS = `Hey [Name], this is [Your Name].
+I'm reaching out because you had shown interest through our franchise directory. Quick question: are you still interested in learning more about owning your own business?
+
+The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
+
+What drew you to look at franchises in the directory?
+
+Are you looking to leave your current job, add income alongside it, or is this more of a longer-term plan?
+
+Do you have any experience in franchising?
+
+Have you looked at specific industries yet, or are you exploring?
+
+Is there a particular reason why now feels like the right time to look at this?`;
+
 const DEFAULT_SCRIPT_CONFIG = {
   openingScripts: {
     franchise_show: DEFAULT_OPENING_FRANCHISE_SHOW,
-    targeted_leads: DEFAULT_OPENING_TARGETED_LEADS
+    targeted_leads: DEFAULT_OPENING_TARGETED_LEADS,
+    directory_leads: DEFAULT_OPENING_DIRECTORY_LEADS
   },
   closingScript: "Great news - you would be a perfect fit for a conversation with one of our franchise advisors. Their role is to help you identify 2-3 brands that match your goals, budget and lifestyle. Just to confirm, you are in [Timezone] time? Let's get you booked in for a quick 15-30 minute call. There's no cost to you. I have [Day] at [Time] or [Day] at [Time], which works better for you? Is there anyone else who you'd like to bring on the call with you?",
   submissionLink: "https://api.leadconnectorhq.com/widget/survey/84dPjYE2rtzUulOqrxRQ",
@@ -70,6 +86,7 @@ No problem. Sometimes invites end up in spam or another folder. Could you check 
 const el = {
   openingFranchiseShow: document.getElementById("opening-franchise-show-input"),
   openingTargetedLeads: document.getElementById("opening-targeted-leads-input"),
+  openingDirectoryLeads: document.getElementById("opening-directory-leads-input"),
   closing: document.getElementById("closing-script-input"),
   handoff: document.getElementById("handoff-script-input"),
   submissionLink: document.getElementById("submission-link-input"),
@@ -109,6 +126,9 @@ function normalizeConfig(parsed) {
   }
   if (!parsed.openingScripts.targeted_leads) {
     parsed.openingScripts.targeted_leads = DEFAULT_OPENING_TARGETED_LEADS;
+  }
+  if (!parsed.openingScripts.directory_leads) {
+    parsed.openingScripts.directory_leads = DEFAULT_OPENING_DIRECTORY_LEADS;
   }
   const defaultMq = DEFAULT_SCRIPT_CONFIG.multiUnitQuestion;
   const mq = parsed.multiUnitQuestion && typeof parsed.multiUnitQuestion === "object" ? parsed.multiUnitQuestion : {};
@@ -163,6 +183,7 @@ function renderForm() {
   const openers = config.openingScripts || {};
   el.openingFranchiseShow.value = openers.franchise_show || "";
   el.openingTargetedLeads.value = openers.targeted_leads || "";
+  el.openingDirectoryLeads.value = openers.directory_leads || "";
   el.closing.value = config.closingScript || "";
   el.handoff.value = config.handoffScript || "";
   el.submissionLink.value = config.submissionLink || "";
@@ -298,7 +319,8 @@ el.saveBtn.addEventListener("click", async () => {
   }
   config.openingScripts = {
     franchise_show: el.openingFranchiseShow.value,
-    targeted_leads: el.openingTargetedLeads.value
+    targeted_leads: el.openingTargetedLeads.value,
+    directory_leads: el.openingDirectoryLeads.value
   };
   delete config.openingScript;
   config.closingScript = el.closing.value;

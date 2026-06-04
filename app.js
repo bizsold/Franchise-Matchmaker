@@ -83,7 +83,8 @@ const DEFAULT_BROKERS = [
 
 const SCRIPT_LEAD_TYPES = {
   franchise_show: "franchise_show",
-  targeted_leads: "targeted_leads"
+  targeted_leads: "targeted_leads",
+  directory_leads: "directory_leads"
 };
 
 const MULTI_UNIT_MIN_LIQUID = 250_000;
@@ -159,10 +160,26 @@ Have you looked at specific industries yet, or are you exploring?
 
 Is there a particular reason why now feels like the right time to look at this?`;
 
+const DEFAULT_OPENING_DIRECTORY_LEADS = `Hey [Name], this is [Your Name].
+I'm reaching out because you had shown interest through our franchise directory. Quick question: are you still interested in learning more about owning your own business?
+
+The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
+
+What drew you to look at franchises in the directory?
+
+Are you looking to leave your current job, add income alongside it, or is this more of a longer-term plan?
+
+Do you have any experience in franchising?
+
+Have you looked at specific industries yet, or are you exploring?
+
+Is there a particular reason why now feels like the right time to look at this?`;
+
 const DEFAULT_SCRIPT_CONFIG = {
   openingScripts: {
     franchise_show: DEFAULT_OPENING_FRANCHISE_SHOW,
-    targeted_leads: DEFAULT_OPENING_TARGETED_LEADS
+    targeted_leads: DEFAULT_OPENING_TARGETED_LEADS,
+    directory_leads: DEFAULT_OPENING_DIRECTORY_LEADS
   },
   closingScript: "Great news - you would be a perfect fit for a conversation with one of our franchise advisors. Their role is to help you identify 2-3 brands that match your goals, budget and lifestyle. Just to confirm, you are in [Timezone] time? Let's get you booked in for a quick 15-30 minute call. There's no cost to you. I have [Day] at [Time] or [Day] at [Time], which works better for you? Is there anyone else who you'd like to bring on the call with you?",
   submissionLink: "https://api.leadconnectorhq.com/widget/survey/84dPjYE2rtzUulOqrxRQ",
@@ -295,6 +312,9 @@ function normalizeScriptConfig(parsed) {
   }
   if (!parsed.openingScripts.targeted_leads) {
     parsed.openingScripts.targeted_leads = DEFAULT_OPENING_TARGETED_LEADS;
+  }
+  if (!parsed.openingScripts.directory_leads) {
+    parsed.openingScripts.directory_leads = DEFAULT_OPENING_DIRECTORY_LEADS;
   }
   parsed.multiUnitQuestion = normalizeMultiUnitQuestion(parsed.multiUnitQuestion);
   return parsed;
@@ -1302,7 +1322,8 @@ el.startSession.addEventListener("click", async () => {
   }
   const leadTypeLabels = {
     [SCRIPT_LEAD_TYPES.franchise_show]: "Franchise Show",
-    [SCRIPT_LEAD_TYPES.targeted_leads]: "Targeted Leads"
+    [SCRIPT_LEAD_TYPES.targeted_leads]: "Targeted Leads",
+    [SCRIPT_LEAD_TYPES.directory_leads]: "Directory Leads"
   };
   if (el.scriptLeadTypeLabel) {
     el.scriptLeadTypeLabel.textContent = `Opening — ${leadTypeLabels[state.leadType] || state.leadType}`;
