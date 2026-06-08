@@ -208,7 +208,8 @@ function normalizeBrokerLocation(broker) {
     focus_for_date: broker.focus_for_date || null,
     focus_today: broker.focus_today === true,
     hard_locked: broker.hard_locked === true,
-    multi_unit_router: broker.multi_unit_router === true
+    multi_unit_router: broker.multi_unit_router === true,
+    top_priority: broker.top_priority === true
   };
   if (broker.location_mode && Array.isArray(broker.location_states)) {
     return { ...broker, ...flags };
@@ -412,6 +413,8 @@ const el = {
   nextQuestion: document.getElementById("next-question"),
   candidateSummary: document.getElementById("candidate-summary"),
   matchFallbackBanner: document.getElementById("match-fallback-banner"),
+  tierTop: document.getElementById("tier-top"),
+  tierTopHeading: document.getElementById("tier-top-heading"),
   tier1: document.getElementById("tier1"),
   tier2: document.getElementById("tier2"),
   postMatchContent: document.getElementById("post-match-content"),
@@ -1077,8 +1080,10 @@ async function runMatching() {
   }
 
   const FOCUS_LIST = state.brokers.filter(b => b.focus_today === true).map(b => b.name);
-  const tier1 = eligibleBrokers.filter(b => FOCUS_LIST.includes(b.name));
-  const tier2 = eligibleBrokers.filter(b => !FOCUS_LIST.includes(b.name));
+  const TOP_PRIORITY_LIST = state.brokers.filter(b => b.top_priority === true).map(b => b.name);
+  const tierTop = eligibleBrokers.filter(b => TOP_PRIORITY_LIST.includes(b.name));
+  const tier1 = eligibleBrokers.filter(b => FOCUS_LIST.includes(b.name) && !TOP_PRIORITY_LIST.includes(b.name));
+  const tier2 = eligibleBrokers.filter(b => !FOCUS_LIST.includes(b.name) && !TOP_PRIORITY_LIST.includes(b.name));
 
   const multiUnitRow = meetsMultiUnitThresholds()
     ? `<tr><th>Multi-Unit Interest</th><td>${state.answers[MULTI_UNIT_ANSWER_ID] === true ? "Yes" : state.answers[MULTI_UNIT_ANSWER_ID] === false ? "No" : "—"}</td></tr>`
@@ -1095,6 +1100,8 @@ async function runMatching() {
       <tr><th>Timezone</th><td>${lead.timezone}</td></tr>
     </tbody></table>
   `;
+  if (el.tierTopHeading) el.tierTopHeading.classList.toggle("hidden", !tierTop.length);
+  if (el.tierTop) el.tierTop.innerHTML = tierTop.length ? renderTable(tierTop) : "";
   el.tier1.innerHTML = tier1.length ? renderTable(tier1) : "";
   el.tier2.innerHTML = tier2.length ? renderTable(tier2) : "";
   el.postMatchContent.innerHTML = `
@@ -1269,6 +1276,8 @@ function resetSession() {
     el.matchFallbackBanner.textContent = "";
     el.matchFallbackBanner.classList.add("hidden");
   }
+  if (el.tierTop) el.tierTop.innerHTML = "";
+  if (el.tierTopHeading) el.tierTopHeading.classList.add("hidden");
   el.tier1.innerHTML = "";
   el.tier2.innerHTML = "";
   el.postMatchContent.innerHTML = "";

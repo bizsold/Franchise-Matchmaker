@@ -382,12 +382,15 @@ td a {
   font-weight: 600;
 }
 
+#tier-top,
 #tier1,
 #tier2 {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
+#tier-top td:first-child,
+#tier-top th:first-child,
 #tier1 td:first-child,
 #tier1 th:first-child,
 #tier2 td:first-child,
@@ -398,6 +401,8 @@ td a {
 }
 
 /* Min Liquid, Min Net Worth — slightly narrower; values may ellipsize if huge */
+#tier-top td:nth-child(2),
+#tier-top td:nth-child(3),
 #tier1 td:nth-child(2),
 #tier1 td:nth-child(3),
 #tier2 td:nth-child(2),
@@ -410,6 +415,8 @@ td a {
   font-size: 12px;
 }
 
+#tier-top th:nth-child(2),
+#tier-top th:nth-child(3),
 #tier1 th:nth-child(2),
 #tier1 th:nth-child(3),
 #tier2 th:nth-child(2),
@@ -423,6 +430,7 @@ td a {
 }
 
 /* Credit — slightly narrower */
+#tier-top td:nth-child(4),
 #tier1 td:nth-child(4),
 #tier2 td:nth-child(4) {
   max-width: 68px;
@@ -433,6 +441,7 @@ td a {
   font-size: 12px;
 }
 
+#tier-top th:nth-child(4),
 #tier1 th:nth-child(4),
 #tier2 th:nth-child(4) {
   max-width: 68px;
@@ -443,6 +452,8 @@ td a {
   line-height: 1.25;
 }
 
+#tier-top td:nth-child(5),
+#tier-top th:nth-child(5),
 #tier1 td:nth-child(5),
 #tier1 th:nth-child(5),
 #tier2 td:nth-child(5),
@@ -455,6 +466,7 @@ td a {
   word-break: break-word;
 }
 
+#tier-top td:last-child,
 #tier1 td:last-child,
 #tier2 td:last-child {
   white-space: nowrap;
@@ -484,26 +496,69 @@ td a {
   vertical-align: middle;
 }
 
+#broker-list .urgent-btn,
+.urgent-btn {
+  border: 2px solid #ea580c;
+  background: #fff;
+  color: #c2410c;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+#broker-list .urgent-btn:hover,
+.urgent-btn:hover {
+  background: #fff7ed;
+}
+
+#broker-list .urgent-btn.active,
+.urgent-btn.active {
+  background: #ea580c;
+  color: #fff;
+  border-color: #c2410c;
+}
+
 #broker-list th:nth-child(12),
 #broker-list td:nth-child(12) {
+  width: 96px;
+  max-width: 96px;
+  min-width: 96px;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(12) {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+#broker-list th:nth-child(13),
+#broker-list td:nth-child(13) {
   width: 108px;
   max-width: 108px;
   white-space: nowrap;
   vertical-align: middle;
 }
 
-#broker-list th:nth-child(13),
-#broker-list td:nth-child(13) {
+#broker-list th:nth-child(14),
+#broker-list td:nth-child(14) {
   width: 132px;
   max-width: 132px;
   white-space: nowrap;
   vertical-align: middle;
 }
 
-#broker-list th:nth-child(14),
-#broker-list td:nth-child(14),
 #broker-list th:nth-child(15),
-#broker-list td:nth-child(15) {
+#broker-list td:nth-child(15),
+#broker-list th:nth-child(16),
+#broker-list td:nth-child(16) {
   width: 64px;
   max-width: 64px;
   white-space: nowrap;

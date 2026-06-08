@@ -390,12 +390,31 @@ async function setBrokerMultiUnitRouterInSupabase(brokerName, enabled) {
   return result.ok;
 }
 
+async function setBrokerTopPriorityInSupabase(brokerName, enabled) {
+  const supabaseBrokers = await fetchBrokersFromSupabase();
+  const brokers = supabaseBrokers?.length ? supabaseBrokers : readBrokers();
+  const broker = brokers.find((b) => b.name === brokerName);
+  if (!broker) return false;
+  const updated = { ...broker, top_priority: enabled === true };
+  const result = await upsertBrokerToSupabase(updated);
+  if (result.ok) {
+    const local = readBrokers();
+    const idx = local.findIndex((b) => b.name === brokerName);
+    if (idx >= 0) {
+      local[idx] = { ...local[idx], top_priority: enabled === true };
+      saveBrokers(local);
+    }
+  }
+  return result.ok;
+}
+
 function normalizeBrokerLocation(broker) {
   const flags = {
     focus_for_date: broker.focus_for_date || null,
     focus_today: broker.focus_today === true,
     hard_locked: broker.hard_locked === true,
-    multi_unit_router: broker.multi_unit_router === true
+    multi_unit_router: broker.multi_unit_router === true,
+    top_priority: broker.top_priority === true
   };
   if (broker.location_mode && Array.isArray(broker.location_states)) {
     return { ...broker, ...flags };
@@ -553,6 +572,14 @@ function getSelectedLocationCodes() {
   return Array.from(document.querySelectorAll(".location-code:checked")).map((node) => node.value);
 }
 
+function setUrgentFormBtnActive(active) {
+  const btn = document.getElementById("top-priority-btn");
+  if (!btn) return;
+  btn.classList.toggle("active", active === true);
+  btn.textContent = active ? "✓ Urgent" : "Urgent";
+  btn.setAttribute("aria-pressed", active ? "true" : "false");
+}
+
 function fillFormForEdit(broker, index) {
   editingIndex = index;
   document.getElementById("broker-name").value = broker.name || "";
@@ -564,6 +591,7 @@ function fillFormForEdit(broker, index) {
   document.getElementById("booking-link").value = broker.booking || "";
   const multiUnitEl = document.getElementById("multi-unit-router");
   if (multiUnitEl) multiUnitEl.checked = broker.multi_unit_router === true;
+  setUrgentFormBtnActive(broker.top_priority === true);
   locationModeSelect.value = broker.location_mode || "us_wide";
   updateLocationPicker(broker.location_states || []);
   saveBrokerBtn.textContent = "Save Broker";
@@ -611,6 +639,7 @@ async function renderBrokers() {
   const rows = brokers.map(({ broker, originalIndex }) => {
     const locked = broker.hard_locked === true;
     const bookedToday = bookedTodayNames.has(broker.name);
+    const urgent = broker.top_priority === true;
     const rowClass = [
       locked ? "broker-row-hard-locked" : "",
       bookedToday ? "broker-row-booked-today" : ""
@@ -628,6 +657,7 @@ async function renderBrokers() {
         <td><a href="${broker.booking}" target="_blank" rel="noopener noreferrer">${broker.booking}</a></td>
         <td><input class="focus-today-checkbox" type="checkbox" data-index="${originalIndex}" data-broker-focus="${broker.name}" ${broker.focus_today === true ? "checked" : ""} /></td>
         <td><input class="multi-unit-checkbox" type="checkbox" data-broker-name="${escapeAttr(broker.name || "")}" title="Multi-unit lead router" ${broker.multi_unit_router === true ? "checked" : ""} /></td>
+        <td><button type="button" class="urgent-btn${urgent ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Urgent: show above focus list when matched">${urgent ? "✓ Urgent" : "Urgent"}</button></td>
         <td><button type="button" class="hard-lock-btn${locked ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Hard lock: exclude from all matching">${locked ? "🔒 Locked" : "🔒 Hard Lock"}</button></td>
         <td><button type="button" class="booked-today-btn${bookedToday ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Mark as booked for today (EST)">${bookedToday ? "✓ Booked Today" : "Mark Booked"}</button></td>
         <td><button class="icon-btn edit-btn" data-index="${originalIndex}" title="Edit">✏️</button></td>
@@ -651,6 +681,7 @@ async function renderBrokers() {
           <th>Booking Link</th>
           <th>Focus</th>
           <th>Multi Unit</th>
+          <th>Urgent</th>
           <th>Hard Lock</th>
           <th>Booked Today</th>
           <th>Edit</th>
@@ -733,6 +764,20 @@ async function renderBrokers() {
     });
   });
 
+  document.querySelectorAll(".urgent-btn[data-broker-name]").forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      const brokerName = event.currentTarget.dataset.brokerName;
+      if (!brokerName) return;
+      const wasUrgent = event.currentTarget.classList.contains("active");
+      const nextUrgent = !wasUrgent;
+      const ok = await setBrokerTopPriorityInSupabase(brokerName, nextUrgent);
+      message.textContent = ok
+        ? `${brokerName} ${nextUrgent ? "marked" : "unmarked"} as Urgent.`
+        : `Could not update Urgent for ${brokerName}. Check Supabase brokers table and network.`;
+      await renderBrokers();
+    });
+  });
+
   document.querySelectorAll(".focus-today-checkbox").forEach((cb) => {
     cb.addEventListener("change", () => {
       const draft = readFocusDraft() || {};
@@ -756,6 +801,7 @@ form.addEventListener("submit", async (event) => {
   const specialRequests = document.getElementById("special-requests").value.trim();
   const booking = document.getElementById("booking-link").value.trim();
   const multiUnitRouter = document.getElementById("multi-unit-router")?.checked === true;
+  const topPriority = document.getElementById("top-priority-btn")?.classList.contains("active") === true;
 
   if (!name || !booking) {
     message.textContent = "Please complete all required fields.";
@@ -773,7 +819,8 @@ form.addEventListener("submit", async (event) => {
     requiresStatus: parseStatus(statusText),
     specialRequests,
     booking,
-    multi_unit_router: multiUnitRouter
+    multi_unit_router: multiUnitRouter,
+    top_priority: topPriority
   };
 
   let savedBroker;
@@ -799,6 +846,7 @@ form.addEventListener("submit", async (event) => {
   saveBrokers(brokers);
 
   form.reset();
+  setUrgentFormBtnActive(false);
   editingIndex = null;
   saveBrokerBtn.textContent = "Add Broker";
   cancelEditBtn.classList.add("hidden");
@@ -828,11 +876,17 @@ locationModeSelect.addEventListener("change", () => {
 cancelEditBtn.addEventListener("click", () => {
   editingIndex = null;
   form.reset();
+  setUrgentFormBtnActive(false);
   saveBrokerBtn.textContent = "Add Broker";
   cancelEditBtn.classList.add("hidden");
   locationModeSelect.value = "us_wide";
   updateLocationPicker([]);
   message.textContent = "Edit cancelled.";
+});
+
+document.getElementById("top-priority-btn")?.addEventListener("click", () => {
+  const btn = document.getElementById("top-priority-btn");
+  setUrgentFormBtnActive(!btn.classList.contains("active"));
 });
 
 updateLocationPicker([]);

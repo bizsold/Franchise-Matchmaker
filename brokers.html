@@ -44,6 +44,10 @@
             <label class="checkbox-label"><input id="multi-unit-router" type="checkbox" /> Multi Unit router</label>
           </div>
           <div class="row">
+            <label>Urgent</label>
+            <button type="button" id="top-priority-btn" class="urgent-btn" aria-pressed="false">Urgent</button>
+          </div>
+          <div class="row">
             <button id="save-broker-btn" type="submit">Add Broker</button>
             <button id="cancel-edit-btn" class="secondary hidden" type="button">Cancel Edit</button>
           </div>
@@ -53,7 +57,7 @@
 
       <section class="panel">
         <h2>Current Brokers (<span id="broker-count">0</span>)</h2>
-        <p class="subtitle">Focus list rule: Focus brokers who match criteria go to Tier 1 first. If a focus broker is booked today, they are excluded from today's results.</p>
+        <p class="subtitle">Urgent brokers appear above the focus list when they match. Focus brokers who match go to Tier 1. If a focus broker is booked today, they are excluded from today's results.</p>
         <div class="row stack">
           <label>Today's Focus List (EST)</label>
           <div id="focus-list-today"></div>
