@@ -853,6 +853,22 @@ function wantsMultiUnitOnlyMatching() {
   return meetsMultiUnitThresholds() && state.answers[MULTI_UNIT_ANSWER_ID] === true;
 }
 
+function getMultiUnitBrokers(brokers) {
+  return (brokers || []).filter((b) => b.multi_unit_router === true);
+}
+
+/** True when every multi-unit router broker has a booking for today. */
+function areAllMultiUnitBrokersBookedToday(brokers, bookedNames) {
+  const multiUnitBrokers = getMultiUnitBrokers(brokers);
+  if (!multiUnitBrokers.length) return false;
+  const bookedSet = bookedNames instanceof Set ? bookedNames : new Set(bookedNames || []);
+  return multiUnitBrokers.every((b) => bookedSet.has(b.name));
+}
+
+function getFocusListBrokers(brokers) {
+  return (brokers || []).filter((b) => b.focus_today === true);
+}
+
 /** @returns {{ type: "script", index: number } | { type: "multi_unit" }[]} */
 function getQuestionFlow() {
   const questions = state.scriptConfig?.questions || [];
@@ -1051,9 +1067,15 @@ async function runMatching() {
   const candidate = { lead, bookedNames };
 
   let brokerPool = state.brokers;
-  const multiUnitOnly = wantsMultiUnitOnlyMatching();
-  if (multiUnitOnly) {
-    brokerPool = brokerPool.filter((b) => b.multi_unit_router === true);
+  const multiUnitInterested = wantsMultiUnitOnlyMatching();
+  let multiUnitGateVoided = false;
+  if (multiUnitInterested) {
+    if (areAllMultiUnitBrokersBookedToday(state.brokers, bookedNames)) {
+      multiUnitGateVoided = true;
+      brokerPool = getFocusListBrokers(state.brokers);
+    } else {
+      brokerPool = getMultiUnitBrokers(brokerPool);
+    }
   }
 
   let eligibleBrokers = filterBrokers(brokerPool, candidate, false);
@@ -1064,10 +1086,21 @@ async function runMatching() {
   }
 
   if (el.matchFallbackBanner) {
-    if (multiUnitOnly && !brokerPool.length) {
+    if (multiUnitInterested && multiUnitGateVoided) {
+      if (!brokerPool.length) {
+        el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today, but no brokers are on today's focus list. Add focus brokers in Brokers admin.";
+        el.matchFallbackBanner.classList.remove("hidden");
+      } else if (!eligibleBrokers.length) {
+        el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today — showing focus list brokers instead, but none match this lead (location, credit, booked today, etc.).";
+        el.matchFallbackBanner.classList.remove("hidden");
+      } else {
+        el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today — showing matching focus list brokers instead.";
+        el.matchFallbackBanner.classList.remove("hidden");
+      }
+    } else if (multiUnitInterested && !brokerPool.length) {
       el.matchFallbackBanner.textContent = "Lead confirmed multi-unit interest, but no brokers have Multi Unit routing enabled. Enable a broker in Brokers admin or adjust the lead answers.";
       el.matchFallbackBanner.classList.remove("hidden");
-    } else if (multiUnitOnly && !eligibleBrokers.length) {
+    } else if (multiUnitInterested && !eligibleBrokers.length) {
       el.matchFallbackBanner.textContent = "Multi-unit routing is active — only Multi Unit brokers are shown. No eligible matches for this lead (location, credit, booked today, etc.).";
       el.matchFallbackBanner.classList.remove("hidden");
     } else if (bookingFallbackActive) {
