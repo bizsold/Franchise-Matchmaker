@@ -207,6 +207,15 @@ td a {
   margin: 4px 0;
 }
 
+.location-picker-section-label {
+  margin: 12px 0 6px;
+  font-weight: 600;
+}
+
+.location-picker-section-label:first-child {
+  margin-top: 0;
+}
+
 #broker-list {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -246,10 +255,15 @@ td a {
 
 #broker-form .row input,
 #broker-form .row select,
-#broker-form .row textarea,
+#broker-form .row textarea {
+  max-width: 460px;
+  width: 100%;
+}
+
 #broker-form .location-picker {
   max-width: 460px;
   width: 100%;
+  max-height: 320px;
 }
 
 #broker-list td a {

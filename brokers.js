@@ -529,7 +529,9 @@ function getModeLabel(mode) {
     non_registration_only: "Non-Registration States Only",
     include_only: "Specific States Only",
     canada_wide: "Canada Wide (all provinces)",
-    canada_wide_exclude: "Canada Wide with Exclusions"
+    canada_wide_exclude: "Canada Wide with Exclusions",
+    north_america_wide: "USA & Canada (all)",
+    north_america_wide_exclude: "USA & Canada w/ Exclusions"
   };
   return labels[mode] || mode;
 }
@@ -562,6 +564,18 @@ function updateLocationPicker(selectedCodes = []) {
     locationPickerLabel.textContent = "Excluded Provinces";
     locationPicker.classList.remove("hidden");
     locationPicker.innerHTML = renderPickerOptions(ALL_CANADIAN_PROVINCES, CANADIAN_PROVINCE_NAMES, selectedCodes);
+  } else if (mode === "north_america_wide_exclude") {
+    locationPickerLabel.textContent = "Excluded States & Provinces";
+    locationPicker.classList.remove("hidden");
+    const selected = new Set(selectedCodes || []);
+    const usSelected = ALL_US_STATES.filter((code) => selected.has(code));
+    const caSelected = ALL_CANADIAN_PROVINCES.filter((code) => selected.has(code));
+    locationPicker.innerHTML = `
+      <p class="subtitle location-picker-section-label">Excluded US States</p>
+      ${renderPickerOptions(ALL_US_STATES, US_STATE_NAMES, usSelected)}
+      <p class="subtitle location-picker-section-label">Excluded Canadian Provinces</p>
+      ${renderPickerOptions(ALL_CANADIAN_PROVINCES, CANADIAN_PROVINCE_NAMES, caSelected)}
+    `;
   } else if (mode === "non_registration_only") {
     locationNote.textContent = "Matches: AL, AK, AZ, AR, CO, CT, DE, DC, FL, GA, ID, IA, KS, KY, LA, ME, MA, MS, MO, MT, NE, NV, NH, NJ, NM, NC, OH, OK, OR, PA, SC, SD, TN, TX, UT, VT, WV, WY";
     locationNote.classList.remove("hidden");

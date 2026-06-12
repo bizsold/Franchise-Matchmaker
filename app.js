@@ -656,6 +656,10 @@ function currentDateEST() {
   return `${year}-${month}-${day}`;
 }
 
+function isNorthAmericaLocationMode(mode) {
+  return mode === "north_america_wide" || mode === "north_america_wide_exclude";
+}
+
 function isBrokerEligibleForState(broker, candidateStateCode) {
   const state = (candidateStateCode || "").toUpperCase();
   switch (broker.location_mode) {
@@ -671,12 +675,20 @@ function isBrokerEligibleForState(broker, candidateStateCode) {
       return true;
     case "canada_wide_exclude":
       return !(broker.location_states || []).includes(state);
+    case "north_america_wide":
+      return true;
+    case "north_america_wide_exclude":
+      return !(broker.location_states || []).includes(state);
     default:
       return false;
   }
 }
 
 function matchesLocation(broker, leadState, country) {
+  if (isNorthAmericaLocationMode(broker.location_mode)) {
+    if (country !== "USA" && country !== "Canada") return false;
+    return isBrokerEligibleForState(broker, leadState);
+  }
   const isCanadaBroker = broker.location_mode === "canada_wide" || broker.location_mode === "canada_wide_exclude";
   if (country === "Canada" && !isCanadaBroker) return false;
   if (country === "USA" && isCanadaBroker) return false;
