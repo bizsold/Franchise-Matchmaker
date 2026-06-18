@@ -102,6 +102,80 @@ const UNQUALIFIED_STATUS_LABELS = {
 };
 const MULTI_UNIT_ANSWER_ID = "multiUnitInterested";
 
+/** Maps matching roles to question ids used in script config (supports renames in Script admin). */
+const QUESTION_ROLE_ALIASES = {
+  liquidity: ["liquidity", "liquid_capital", "liquidCapital"],
+  netWorth: ["netWorth", "networth", "net_worth"],
+  status: ["status", "sba", "citizenship", "citizenship_status"],
+  creditScore: ["creditScore", "credit", "credit_score"],
+  timeline: ["timeline"]
+};
+
+function questionIdMatchesRole(questionId, role) {
+  const aliases = QUESTION_ROLE_ALIASES[role];
+  if (!aliases) return questionId === role;
+  return aliases.includes(questionId);
+}
+
+function getConfiguredQuestions() {
+  return state.scriptConfig?.questions || DEFAULT_SCRIPT_CONFIG.questions || [];
+}
+
+function getQuestionIdForRole(role) {
+  const aliases = QUESTION_ROLE_ALIASES[role] || [role];
+  for (const q of getConfiguredQuestions()) {
+    if (aliases.includes(q.id)) return q.id;
+  }
+  return aliases[0];
+}
+
+function getRoleAnswer(role) {
+  return state.answers[getQuestionIdForRole(role)];
+}
+
+function parseCreditScore(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const range = trimmed.match(/^(\d+)\s*-\s*\d+/);
+    if (range) return Number(range[1]);
+    const plus = trimmed.match(/^(\d+)\s*\+/);
+    if (plus) return Number(plus[1]);
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return NaN;
+}
+
+function normalizeCreditScoreOptionValue(value, label) {
+  const parsed = parseCreditScore(value);
+  if (Number.isFinite(parsed)) return parsed;
+  const fromLabel = parseCreditScore(label);
+  if (Number.isFinite(fromLabel)) return fromLabel;
+  return value;
+}
+
+function getLeadCreditScore() {
+  return parseCreditScore(getRoleAnswer("creditScore"));
+}
+
+function formatCreditScoreDisplay(value) {
+  if (value === undefined || value === null || value === "") return "—";
+  const parsed = parseCreditScore(value);
+  if (Number.isFinite(parsed)) return `${parsed}+`;
+  return String(value);
+}
+
+function getRoleAnswerDollars(role) {
+  return parseNumericDollars(getRoleAnswer(role));
+}
+
+function getNumberKFieldLabel(questionId) {
+  if (questionIdMatchesRole(questionId, "liquidity")) return "Liquid Capital";
+  if (questionIdMatchesRole(questionId, "netWorth")) return "Net Worth";
+  return "Amount";
+}
+
 const DEFAULT_MULTI_UNIT_QUESTION = {
   text: "Are you interested in multi-unit franchise ownership?",
   yesLabel: "Yes",
@@ -297,10 +371,20 @@ function getMasterBrokers() {
 function normalizeScriptConfig(parsed) {
   if (!parsed || !Array.isArray(parsed.questions)) return null;
   parsed.questions = parsed.questions.map((q) => {
-    if (q.id === "liquidity" || q.id === "netWorth") {
-      return { ...q, type: "number_k", options: undefined };
+    let next = { ...q };
+    if (questionIdMatchesRole(q.id, "liquidity") || questionIdMatchesRole(q.id, "netWorth")) {
+      next = { ...next, type: "number_k", options: undefined };
     }
-    return q;
+    if (questionIdMatchesRole(q.id, "creditScore") && Array.isArray(q.options)) {
+      next = {
+        ...next,
+        options: q.options.map((opt) => ({
+          ...opt,
+          value: normalizeCreditScoreOptionValue(opt.value, opt.label)
+        }))
+      };
+    }
+    return next;
   });
   if (!parsed.openingScripts || typeof parsed.openingScripts !== "object") {
     parsed.openingScripts = {};
@@ -709,10 +793,6 @@ function parseNumericDollars(value) {
   return parsed;
 }
 
-function getAnswerDollars(answerId) {
-  return parseNumericDollars(state.answers[answerId]);
-}
-
 function getLiquidityDisqualifyStatus(dollars) {
   if (!Number.isFinite(dollars) || dollars >= LIQUIDITY_PASS_MIN) return null;
   if (dollars < 25_000) return "liquidity_under_25k";
@@ -727,18 +807,18 @@ function getNetWorthDisqualifyStatus(dollars) {
 }
 
 function getDisqualifyStatusAfterQuestion(questionId) {
-  if (questionId === "liquidity") {
-    return getLiquidityDisqualifyStatus(getAnswerDollars("liquidity"));
+  if (questionIdMatchesRole(questionId, "liquidity")) {
+    return getLiquidityDisqualifyStatus(getRoleAnswerDollars("liquidity"));
   }
-  if (questionId === "netWorth") {
-    return getNetWorthDisqualifyStatus(getAnswerDollars("netWorth"));
+  if (questionIdMatchesRole(questionId, "netWorth")) {
+    return getNetWorthDisqualifyStatus(getRoleAnswerDollars("netWorth"));
   }
   return null;
 }
 
 function getUnqualifiedFinancialValues() {
-  const liquidity = getAnswerDollars("liquidity");
-  const netWorth = getAnswerDollars("netWorth");
+  const liquidity = getRoleAnswerDollars("liquidity");
+  const netWorth = getRoleAnswerDollars("netWorth");
   return {
     liquidity: Number.isFinite(liquidity) ? liquidity : null,
     netWorth: Number.isFinite(netWorth) ? netWorth : null
@@ -845,8 +925,8 @@ function showUnqualifiedCopyFeedback(ok) {
 }
 
 function meetsMultiUnitThresholds() {
-  const liquidity = getAnswerDollars("liquidity");
-  const netWorth = getAnswerDollars("netWorth");
+  const liquidity = getRoleAnswerDollars("liquidity");
+  const netWorth = getRoleAnswerDollars("netWorth");
   return (
     Number.isFinite(liquidity) &&
     Number.isFinite(netWorth) &&
@@ -887,7 +967,7 @@ function getQuestionFlow() {
   const flow = [];
   questions.forEach((q, index) => {
     flow.push({ type: "script", index });
-    if (q.id === "netWorth" && meetsMultiUnitThresholds()) {
+    if (questionIdMatchesRole(q.id, "netWorth") && meetsMultiUnitThresholds()) {
       flow.push({ type: "multi_unit" });
     }
   });
@@ -979,7 +1059,7 @@ function renderQuestion() {
     const rawValue = state.answers[q.id] !== undefined ? String(Math.floor(Number(state.answers[q.id]) / 1000)) : "";
     html += `
       <div class="row">
-        <label>${q.id === "liquidity" ? "Liquid Capital" : "Net Worth"}</label>
+        <label>${getNumberKFieldLabel(q.id)}</label>
         <input id="number-k-input" type="number" min="0" step="1" value="${rawValue}" placeholder="Enter amount in K" />
         <span>K</span>
       </div>`;
@@ -1059,14 +1139,15 @@ async function runMatching() {
   await refreshLiveState();
   syncMultiUnitAnswerState();
   const leadState = normalizeState(state.answers.stateInput);
-  const liquidity = getAnswerDollars("liquidity");
-  const netWorth = getAnswerDollars("netWorth");
+  const liquidity = getRoleAnswerDollars("liquidity");
+  const netWorth = getRoleAnswerDollars("netWorth");
+  const creditScore = getLeadCreditScore();
   const lead = {
-    liquidity: Number.isFinite(liquidity) ? liquidity : state.answers.liquidity,
-    status: state.answers.status,
-    netWorth: Number.isFinite(netWorth) ? netWorth : state.answers.netWorth,
-    creditScore: state.answers.creditScore,
-    timeline: state.answers.timeline,
+    liquidity: Number.isFinite(liquidity) ? liquidity : NaN,
+    status: getRoleAnswer("status"),
+    netWorth: Number.isFinite(netWorth) ? netWorth : NaN,
+    creditScore: Number.isFinite(creditScore) ? creditScore : NaN,
+    timeline: getRoleAnswer("timeline"),
     city: state.answers.city,
     state: leadState,
     country: state.answers.country,
@@ -1197,19 +1278,22 @@ async function runMatching() {
 function renderCandidateInfoTable() {
   const a = state.answers || {};
   const stateDisplay = normalizeState(a.stateInput || "") || a.stateInput || "—";
+  const liquidity = getRoleAnswerDollars("liquidity");
+  const netWorth = getRoleAnswerDollars("netWorth");
+  const creditRaw = getRoleAnswer("creditScore");
   const rows = [
     ["Setter Name", el.setterName.value ? escapeHTML(el.setterName.value) : "—"],
-    ["Liquid Capital", typeof a.liquidity === "number" ? `$${a.liquidity.toLocaleString()}` : "—"],
-    ["Net Worth", typeof a.netWorth === "number" ? `$${a.netWorth.toLocaleString()}` : "—"],
+    ["Liquid Capital", Number.isFinite(liquidity) ? `$${liquidity.toLocaleString()}` : "—"],
+    ["Net Worth", Number.isFinite(netWorth) ? `$${netWorth.toLocaleString()}` : "—"],
     ...(meetsMultiUnitThresholds()
       ? [["Multi-Unit Interest", a[MULTI_UNIT_ANSWER_ID] === true ? "Yes" : a[MULTI_UNIT_ANSWER_ID] === false ? "No" : "—"]]
       : []),
-    ["Credit Score", a.creditScore ? `${a.creditScore}+` : "—"],
-    ["Timeline", a.timeline ? escapeHTML(String(a.timeline)) : "—"],
+    ["Credit Score", formatCreditScoreDisplay(creditRaw)],
+    ["Timeline", getRoleAnswer("timeline") ? escapeHTML(String(getRoleAnswer("timeline"))) : "—"],
     ["City", a.city ? escapeHTML(a.city) : "—"],
     ["State/Province", escapeHTML(stateDisplay)],
     ["Country", a.country ? escapeHTML(a.country) : "—"],
-    ["Citizenship Status", a.status ? escapeHTML(String(a.status)) : "—"]
+    ["Citizenship Status", getRoleAnswer("status") ? escapeHTML(String(getRoleAnswer("status"))) : "—"]
   ];
   return `<table><tbody>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join("")}</tbody></table>`;
 }

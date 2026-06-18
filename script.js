@@ -104,16 +104,62 @@ const el = {
   saveMessage: document.getElementById("script-save-message")
 };
 
+const QUESTION_ROLE_ALIASES = {
+  liquidity: ["liquidity", "liquid_capital", "liquidCapital"],
+  netWorth: ["netWorth", "networth", "net_worth"],
+  status: ["status", "sba", "citizenship", "citizenship_status"],
+  creditScore: ["creditScore", "credit", "credit_score"],
+  timeline: ["timeline"]
+};
+
+function questionIdMatchesRole(questionId, role) {
+  const aliases = QUESTION_ROLE_ALIASES[role];
+  if (!aliases) return questionId === role;
+  return aliases.includes(questionId);
+}
+
+function parseCreditScore(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    const range = trimmed.match(/^(\d+)\s*-\s*\d+/);
+    if (range) return Number(range[1]);
+    const plus = trimmed.match(/^(\d+)\s*\+/);
+    if (plus) return Number(plus[1]);
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return NaN;
+}
+
+function normalizeCreditScoreOptionValue(value, label) {
+  const parsed = parseCreditScore(value);
+  if (Number.isFinite(parsed)) return parsed;
+  const fromLabel = parseCreditScore(label);
+  if (Number.isFinite(fromLabel)) return fromLabel;
+  return value;
+}
+
 let config = loadConfig();
 let editingQuestionIndex = null;
 
 function normalizeConfig(parsed) {
   if (!parsed || !Array.isArray(parsed.questions)) return null;
   parsed.questions = parsed.questions.map((q) => {
-    if (q.id === "liquidity" || q.id === "netWorth") {
-      return { ...q, type: "number_k", options: undefined };
+    let next = { ...q };
+    if (questionIdMatchesRole(q.id, "liquidity") || questionIdMatchesRole(q.id, "netWorth")) {
+      next = { ...next, type: "number_k", options: undefined };
     }
-    return q;
+    if (questionIdMatchesRole(q.id, "creditScore") && Array.isArray(q.options)) {
+      next = {
+        ...next,
+        options: q.options.map((opt) => ({
+          ...opt,
+          value: normalizeCreditScoreOptionValue(opt.value, opt.label)
+        }))
+      };
+    }
+    return next;
   });
   if (!parsed.openingScripts || typeof parsed.openingScripts !== "object") {
     parsed.openingScripts = {};
