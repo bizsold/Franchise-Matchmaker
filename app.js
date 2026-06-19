@@ -96,18 +96,10 @@ function getOpeningLeadTypeLabel(leadType) {
   const labels = {
     [SCRIPT_LEAD_TYPES.franchise_show]: "Franchise Show",
     [SCRIPT_LEAD_TYPES.targeted_leads]: "Targeted Leads",
-    [SCRIPT_LEAD_TYPES.directory_leads]: "Directory Leads"
+    [SCRIPT_LEAD_TYPES.directory_leads]: "Directory Leads",
+    [SCRIPT_LEAD_TYPES.targeted_directory_leads]: "Targeted / Directory Leads"
   };
   return labels[leadType] || leadType;
-}
-
-function resolveOpeningLeadType(mainType, variant) {
-  if (isTargetedDirectoryGroup(mainType)) {
-    return variant === SCRIPT_LEAD_TYPES.directory_leads
-      ? SCRIPT_LEAD_TYPES.directory_leads
-      : SCRIPT_LEAD_TYPES.targeted_leads;
-  }
-  return mainType || SCRIPT_LEAD_TYPES.franchise_show;
 }
 
 const MULTI_UNIT_MIN_LIQUID = 250_000;
@@ -243,26 +235,14 @@ Have you looked at specific industries yet, or are you exploring?
 Is there a particular reason why now feels like the right time to look at this?`;
 
 const DEFAULT_OPENING_TARGETED_LEADS = `Hey [Name], this is [Your Name].
-I'm reaching out because you had shown interest in exploring franchise ownership. Quick question: are you still interested in learning more about owning your own business?
-
-The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
-
-What got you interested in looking at franchises?
-
-Are you looking to leave your current job, add income alongside it, or is this more of a longer-term plan?
-
-Do you have any experience in franchising?
-
-Have you looked at specific industries yet, or are you exploring?
-
-Is there a particular reason why now feels like the right time to look at this?`;
+I'm reaching out because you had inquired about owning a _______(industry) franchise. Quick question: are you still interested in learning more about owning your own business?`;
 
 const DEFAULT_OPENING_DIRECTORY_LEADS = `Hey [Name], this is [Your Name].
-I'm reaching out because you had shown interest through our franchise directory. Quick question: are you still interested in learning more about owning your own business?
+I'm reaching out because you inquired on getting a copy of our franchise directory. Quick question: are you still interested in learning more about owning your own business?`;
 
-The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
+const DEFAULT_OPENING_TARGETED_DIRECTORY_SHARED = `The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
 
-What drew you to look at franchises in the directory?
+What got you interested in looking at franchises?
 
 Are you looking to leave your current job, add income alongside it, or is this more of a longer-term plan?
 
@@ -276,7 +256,8 @@ const DEFAULT_SCRIPT_CONFIG = {
   openingScripts: {
     franchise_show: DEFAULT_OPENING_FRANCHISE_SHOW,
     targeted_leads: DEFAULT_OPENING_TARGETED_LEADS,
-    directory_leads: DEFAULT_OPENING_DIRECTORY_LEADS
+    directory_leads: DEFAULT_OPENING_DIRECTORY_LEADS,
+    targeted_directory_shared: DEFAULT_OPENING_TARGETED_DIRECTORY_SHARED
   },
   closingScript: "Great news - you would be a perfect fit for a conversation with one of our franchise advisors. Their role is to help you identify 2-3 brands that match your goals, budget and lifestyle. Just to confirm, you are in [Timezone] time? Let's get you booked in for a quick 15-30 minute call. There's no cost to you. I have [Day] at [Time] or [Day] at [Time], which works better for you? Is there anyone else who you'd like to bring on the call with you?",
   submissionLink: "https://api.leadconnectorhq.com/widget/survey/84dPjYE2rtzUulOqrxRQ",
@@ -391,6 +372,46 @@ function getMasterBrokers() {
   return normalizedDefaults;
 }
 
+function splitLegacyTargetedDirectoryScripts(openingScripts) {
+  if (!openingScripts || typeof openingScripts !== "object") return openingScripts;
+  const sharedMarker = "The reason I'm calling is";
+  const next = { ...openingScripts };
+
+  if (!next.targeted_directory_shared) {
+    for (const key of ["targeted_leads", "directory_leads"]) {
+      const text = next[key] || "";
+      const idx = text.indexOf(sharedMarker);
+      if (idx > 0) {
+        next.targeted_directory_shared = text.slice(idx).trim();
+        break;
+      }
+    }
+  }
+
+  for (const key of ["targeted_leads", "directory_leads"]) {
+    const text = next[key] || "";
+    const idx = text.indexOf(sharedMarker);
+    if (idx > 0) {
+      next[key] = text.slice(0, idx).trim();
+    }
+  }
+
+  return next;
+}
+
+function applyUpdatedTargetedDirectoryIntros(openingScripts) {
+  const next = { ...openingScripts };
+  const targeted = next.targeted_leads || "";
+  const directory = next.directory_leads || "";
+  if (targeted.includes("had shown interest in exploring franchise ownership")) {
+    next.targeted_leads = DEFAULT_OPENING_TARGETED_LEADS;
+  }
+  if (directory.includes("had shown interest through our franchise directory")) {
+    next.directory_leads = DEFAULT_OPENING_DIRECTORY_LEADS;
+  }
+  return next;
+}
+
 function normalizeScriptConfig(parsed) {
   if (!parsed || !Array.isArray(parsed.questions)) return null;
   parsed.questions = parsed.questions.map((q) => {
@@ -412,6 +433,8 @@ function normalizeScriptConfig(parsed) {
   if (!parsed.openingScripts || typeof parsed.openingScripts !== "object") {
     parsed.openingScripts = {};
   }
+  parsed.openingScripts = splitLegacyTargetedDirectoryScripts(parsed.openingScripts);
+  parsed.openingScripts = applyUpdatedTargetedDirectoryIntros(parsed.openingScripts);
   if (parsed.openingScript && !parsed.openingScripts.franchise_show) {
     parsed.openingScripts.franchise_show = parsed.openingScript;
   }
@@ -423,6 +446,9 @@ function normalizeScriptConfig(parsed) {
   }
   if (!parsed.openingScripts.directory_leads) {
     parsed.openingScripts.directory_leads = DEFAULT_OPENING_DIRECTORY_LEADS;
+  }
+  if (!parsed.openingScripts.targeted_directory_shared) {
+    parsed.openingScripts.targeted_directory_shared = DEFAULT_OPENING_TARGETED_DIRECTORY_SHARED;
   }
   parsed.multiUnitQuestion = normalizeMultiUnitQuestion(parsed.multiUnitQuestion);
   return parsed;
@@ -486,7 +512,6 @@ const state = {
   role: "setter",
   isAdmin: false,
   leadType: SCRIPT_LEAD_TYPES.franchise_show,
-  leadTypeCategory: SCRIPT_LEAD_TYPES.franchise_show,
   answers: {},
   step: 0,
   bookingsToday: [],
@@ -507,18 +532,19 @@ const el = {
   setterName: document.getElementById("setter-name"),
   leadTypeRow: document.getElementById("lead-type-row"),
   leadType: document.getElementById("lead-type"),
-  openingVariantRow: document.getElementById("opening-variant-row"),
-  openingVariant: document.getElementById("opening-variant"),
   startSession: document.getElementById("start-session"),
   scriptPanel: document.getElementById("script-panel"),
   adminPanel: document.getElementById("admin-panel"),
   questionsPanel: document.getElementById("questions-panel"),
   questionsPanelTitle: document.getElementById("questions-panel-title"),
   resultsPanel: document.getElementById("results-panel"),
+  openingScriptSingle: document.getElementById("opening-script-single"),
+  openingScriptDual: document.getElementById("opening-script-dual"),
   openingScript: document.getElementById("opening-script"),
+  openingScriptTargeted: document.getElementById("opening-script-targeted"),
+  openingScriptDirectory: document.getElementById("opening-script-directory"),
+  openingScriptShared: document.getElementById("opening-script-shared"),
   scriptLeadTypeLabel: document.getElementById("script-lead-type-label"),
-  scriptOpeningVariantRow: document.getElementById("script-opening-variant-row"),
-  scriptOpeningVariant: document.getElementById("script-opening-variant"),
   nextToQualifying: document.getElementById("next-to-qualifying"),
   questionContainer: document.getElementById("question-container"),
   prevQuestion: document.getElementById("prev-question"),
@@ -1398,32 +1424,42 @@ function showConfirmation(brokerName) {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
-function openingText(setterName) {
-  const raw = getOpeningScriptText(state.scriptConfig, state.leadType);
-  const base = raw.replace("[Your Name]", setterName || "[Your Name]");
-  // Enforce one blank line after the opener line for readability.
+function applySetterNameToScript(setterName, raw) {
+  const base = (raw || "").replace("[Your Name]", setterName || "[Your Name]");
   return base.replace(/(\[Your Name\]\.?)(\n)(?!\n)/, "$1\n\n");
 }
 
-function updateOpeningVariantVisibility() {
-  const show = isTargetedDirectoryGroup(el.leadType?.value);
-  if (el.openingVariantRow) el.openingVariantRow.classList.toggle("hidden", !show);
-}
-
-function updateScriptOpeningVariantVisibility() {
-  const show = isTargetedDirectoryGroup(state.leadTypeCategory);
-  if (el.scriptOpeningVariantRow) el.scriptOpeningVariantRow.classList.toggle("hidden", !show);
-  if (show && el.scriptOpeningVariant) {
-    el.scriptOpeningVariant.value = state.leadType;
-  }
+function openingText(setterName, leadType) {
+  const raw = getOpeningScriptText(state.scriptConfig, leadType);
+  return applySetterNameToScript(setterName, raw);
 }
 
 function refreshOpeningScriptDisplay() {
+  const setterName = el.setterName.value;
+  const showDual = isTargetedDirectoryGroup(state.leadType);
+
   if (el.scriptLeadTypeLabel) {
-    el.scriptLeadTypeLabel.textContent = `Opening — ${getOpeningLeadTypeLabel(state.leadType)}`;
+    el.scriptLeadTypeLabel.textContent = showDual
+      ? "Pick the opening that matches this lead, then continue with the shared script below:"
+      : `Opening — ${getOpeningLeadTypeLabel(state.leadType)}`;
   }
-  if (el.openingScript) {
-    el.openingScript.textContent = openingText(el.setterName.value);
+
+  if (el.openingScriptSingle) el.openingScriptSingle.classList.toggle("hidden", showDual);
+  if (el.openingScriptDual) el.openingScriptDual.classList.toggle("hidden", !showDual);
+
+  if (showDual) {
+    if (el.openingScriptTargeted) {
+      el.openingScriptTargeted.textContent = openingText(setterName, SCRIPT_LEAD_TYPES.targeted_leads);
+    }
+    if (el.openingScriptDirectory) {
+      el.openingScriptDirectory.textContent = openingText(setterName, SCRIPT_LEAD_TYPES.directory_leads);
+    }
+    if (el.openingScriptShared) {
+      const sharedRaw = getOpeningScriptText(state.scriptConfig, "targeted_directory_shared");
+      el.openingScriptShared.textContent = applySetterNameToScript(setterName, sharedRaw);
+    }
+  } else if (el.openingScript) {
+    el.openingScript.textContent = openingText(setterName, state.leadType);
   }
 }
 
@@ -1437,13 +1473,10 @@ function resetSession() {
   state.unqualifiedExportText = "";
   state.unqualifiedReturnStep = 0;
   state.leadType = SCRIPT_LEAD_TYPES.franchise_show;
-  state.leadTypeCategory = SCRIPT_LEAD_TYPES.franchise_show;
   el.setterName.value = "";
   el.adminCode.value = "";
   el.role.value = "setter";
   if (el.leadType) el.leadType.value = SCRIPT_LEAD_TYPES.franchise_show;
-  if (el.openingVariant) el.openingVariant.value = SCRIPT_LEAD_TYPES.targeted_leads;
-  updateOpeningVariantVisibility();
   el.adminCodeRow.classList.add("hidden");
   el.setterNameRow.classList.remove("hidden");
   if (el.leadTypeRow) el.leadTypeRow.classList.remove("hidden");
@@ -1480,13 +1513,6 @@ function resetSession() {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
-el.leadType?.addEventListener("change", updateOpeningVariantVisibility);
-
-el.scriptOpeningVariant?.addEventListener("change", () => {
-  state.leadType = el.scriptOpeningVariant.value;
-  refreshOpeningScriptDisplay();
-});
-
 el.role.addEventListener("change", () => {
   const isAdmin = el.role.value === "admin";
   el.adminCodeRow.classList.toggle("hidden", !isAdmin);
@@ -1515,8 +1541,7 @@ el.startSession.addEventListener("click", async () => {
       return;
     }
   }
-  state.leadTypeCategory = el.leadType?.value || SCRIPT_LEAD_TYPES.franchise_show;
-  state.leadType = resolveOpeningLeadType(state.leadTypeCategory, el.openingVariant?.value);
+  state.leadType = el.leadType?.value || SCRIPT_LEAD_TYPES.franchise_show;
   state.db = new BookingStore();
   await refreshLiveState();
   state.bookingsToday = await state.db.fetchTodayBookings();
@@ -1527,7 +1552,6 @@ el.startSession.addEventListener("click", async () => {
     el.resultsPanel.classList.add("hidden");
     return;
   }
-  updateScriptOpeningVariantVisibility();
   refreshOpeningScriptDisplay();
   el.scriptPanel.classList.remove("hidden");
   // Push a "session" entry so confirmation's replaceState leaves a "setter" entry to go back to.
@@ -1691,5 +1715,3 @@ window.addEventListener("popstate", (event) => {
     resetSession();
   }
 });
-
-updateOpeningVariantVisibility();

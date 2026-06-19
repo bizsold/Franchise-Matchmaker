@@ -22,26 +22,14 @@ Have you looked at specific industries yet, or are you exploring?
 Is there a particular reason why now feels like the right time to look at this?`;
 
 const DEFAULT_OPENING_TARGETED_LEADS = `Hey [Name], this is [Your Name].
-I'm reaching out because you had shown interest in exploring franchise ownership. Quick question: are you still interested in learning more about owning your own business?
-
-The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
-
-What got you interested in looking at franchises?
-
-Are you looking to leave your current job, add income alongside it, or is this more of a longer-term plan?
-
-Do you have any experience in franchising?
-
-Have you looked at specific industries yet, or are you exploring?
-
-Is there a particular reason why now feels like the right time to look at this?`;
+I'm reaching out because you had inquired about owning a _______(industry) franchise. Quick question: are you still interested in learning more about owning your own business?`;
 
 const DEFAULT_OPENING_DIRECTORY_LEADS = `Hey [Name], this is [Your Name].
-I'm reaching out because you had shown interest through our franchise directory. Quick question: are you still interested in learning more about owning your own business?
+I'm reaching out because you inquired on getting a copy of our franchise directory. Quick question: are you still interested in learning more about owning your own business?`;
 
-The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
+const DEFAULT_OPENING_TARGETED_DIRECTORY_SHARED = `The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.
 
-What drew you to look at franchises in the directory?
+What got you interested in looking at franchises?
 
 Are you looking to leave your current job, add income alongside it, or is this more of a longer-term plan?
 
@@ -55,7 +43,8 @@ const DEFAULT_SCRIPT_CONFIG = {
   openingScripts: {
     franchise_show: DEFAULT_OPENING_FRANCHISE_SHOW,
     targeted_leads: DEFAULT_OPENING_TARGETED_LEADS,
-    directory_leads: DEFAULT_OPENING_DIRECTORY_LEADS
+    directory_leads: DEFAULT_OPENING_DIRECTORY_LEADS,
+    targeted_directory_shared: DEFAULT_OPENING_TARGETED_DIRECTORY_SHARED
   },
   closingScript: "Great news - you would be a perfect fit for a conversation with one of our franchise advisors. Their role is to help you identify 2-3 brands that match your goals, budget and lifestyle. Just to confirm, you are in [Timezone] time? Let's get you booked in for a quick 15-30 minute call. There's no cost to you. I have [Day] at [Time] or [Day] at [Time], which works better for you? Is there anyone else who you'd like to bring on the call with you?",
   submissionLink: "https://api.leadconnectorhq.com/widget/survey/84dPjYE2rtzUulOqrxRQ",
@@ -87,6 +76,7 @@ const el = {
   openingFranchiseShow: document.getElementById("opening-franchise-show-input"),
   openingTargetedLeads: document.getElementById("opening-targeted-leads-input"),
   openingDirectoryLeads: document.getElementById("opening-directory-leads-input"),
+  openingTargetedDirectoryShared: document.getElementById("opening-targeted-directory-shared-input"),
   closing: document.getElementById("closing-script-input"),
   handoff: document.getElementById("handoff-script-input"),
   submissionLink: document.getElementById("submission-link-input"),
@@ -143,6 +133,46 @@ function normalizeCreditScoreOptionValue(value, label) {
 let config = loadConfig();
 let editingQuestionIndex = null;
 
+function splitLegacyTargetedDirectoryScripts(openingScripts) {
+  if (!openingScripts || typeof openingScripts !== "object") return openingScripts;
+  const sharedMarker = "The reason I'm calling is";
+  const next = { ...openingScripts };
+
+  if (!next.targeted_directory_shared) {
+    for (const key of ["targeted_leads", "directory_leads"]) {
+      const text = next[key] || "";
+      const idx = text.indexOf(sharedMarker);
+      if (idx > 0) {
+        next.targeted_directory_shared = text.slice(idx).trim();
+        break;
+      }
+    }
+  }
+
+  for (const key of ["targeted_leads", "directory_leads"]) {
+    const text = next[key] || "";
+    const idx = text.indexOf(sharedMarker);
+    if (idx > 0) {
+      next[key] = text.slice(0, idx).trim();
+    }
+  }
+
+  return next;
+}
+
+function applyUpdatedTargetedDirectoryIntros(openingScripts) {
+  const next = { ...openingScripts };
+  const targeted = next.targeted_leads || "";
+  const directory = next.directory_leads || "";
+  if (targeted.includes("had shown interest in exploring franchise ownership")) {
+    next.targeted_leads = DEFAULT_OPENING_TARGETED_LEADS;
+  }
+  if (directory.includes("had shown interest through our franchise directory")) {
+    next.directory_leads = DEFAULT_OPENING_DIRECTORY_LEADS;
+  }
+  return next;
+}
+
 function normalizeConfig(parsed) {
   if (!parsed || !Array.isArray(parsed.questions)) return null;
   parsed.questions = parsed.questions.map((q) => {
@@ -164,6 +194,8 @@ function normalizeConfig(parsed) {
   if (!parsed.openingScripts || typeof parsed.openingScripts !== "object") {
     parsed.openingScripts = {};
   }
+  parsed.openingScripts = splitLegacyTargetedDirectoryScripts(parsed.openingScripts);
+  parsed.openingScripts = applyUpdatedTargetedDirectoryIntros(parsed.openingScripts);
   if (parsed.openingScript && !parsed.openingScripts.franchise_show) {
     parsed.openingScripts.franchise_show = parsed.openingScript;
   }
@@ -175,6 +207,9 @@ function normalizeConfig(parsed) {
   }
   if (!parsed.openingScripts.directory_leads) {
     parsed.openingScripts.directory_leads = DEFAULT_OPENING_DIRECTORY_LEADS;
+  }
+  if (!parsed.openingScripts.targeted_directory_shared) {
+    parsed.openingScripts.targeted_directory_shared = DEFAULT_OPENING_TARGETED_DIRECTORY_SHARED;
   }
   const defaultMq = DEFAULT_SCRIPT_CONFIG.multiUnitQuestion;
   const mq = parsed.multiUnitQuestion && typeof parsed.multiUnitQuestion === "object" ? parsed.multiUnitQuestion : {};
@@ -230,6 +265,7 @@ function renderForm() {
   el.openingFranchiseShow.value = openers.franchise_show || "";
   el.openingTargetedLeads.value = openers.targeted_leads || "";
   el.openingDirectoryLeads.value = openers.directory_leads || "";
+  el.openingTargetedDirectoryShared.value = openers.targeted_directory_shared || "";
   el.closing.value = config.closingScript || "";
   el.handoff.value = config.handoffScript || "";
   el.submissionLink.value = config.submissionLink || "";
@@ -366,7 +402,8 @@ el.saveBtn.addEventListener("click", async () => {
   config.openingScripts = {
     franchise_show: el.openingFranchiseShow.value,
     targeted_leads: el.openingTargetedLeads.value,
-    directory_leads: el.openingDirectoryLeads.value
+    directory_leads: el.openingDirectoryLeads.value,
+    targeted_directory_shared: el.openingTargetedDirectoryShared.value
   };
   delete config.openingScript;
   config.closingScript = el.closing.value;

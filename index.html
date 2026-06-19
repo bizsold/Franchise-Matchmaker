@@ -38,13 +38,6 @@
             <option value="targeted_directory_leads">Targeted / Directory Leads</option>
           </select>
         </div>
-        <div class="row hidden" id="opening-variant-row">
-          <label for="opening-variant">Opening</label>
-          <select id="opening-variant">
-            <option value="targeted_leads">Targeted Leads</option>
-            <option value="directory_leads">Directory Leads</option>
-          </select>
-        </div>
         <div class="row">
           <button id="start-session">Start</button>
         </div>
@@ -53,14 +46,16 @@
       <section class="panel hidden" id="script-panel">
         <h2>Script</h2>
         <p class="subtitle" id="script-lead-type-label"></p>
-        <div class="row hidden" id="script-opening-variant-row">
-          <label for="script-opening-variant">Opening</label>
-          <select id="script-opening-variant">
-            <option value="targeted_leads">Targeted Leads</option>
-            <option value="directory_leads">Directory Leads</option>
-          </select>
+        <div id="opening-script-single">
+          <pre id="opening-script" class="script-text"></pre>
         </div>
-        <pre id="opening-script" class="script-text"></pre>
+        <div id="opening-script-dual" class="hidden">
+          <h3>Targeted Leads</h3>
+          <pre id="opening-script-targeted" class="script-text"></pre>
+          <h3>Directory Leads</h3>
+          <pre id="opening-script-directory" class="script-text"></pre>
+          <pre id="opening-script-shared" class="script-text opening-script-shared"></pre>
+        </div>
         <button id="next-to-qualifying">Next</button>
       </section>
 
