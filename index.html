@@ -35,6 +35,12 @@
           <label for="lead-type">Lead type</label>
           <select id="lead-type">
             <option value="franchise_show">Franchise Show</option>
+            <option value="targeted_directory_leads">Targeted / Directory Leads</option>
+          </select>
+        </div>
+        <div class="row hidden" id="opening-variant-row">
+          <label for="opening-variant">Opening</label>
+          <select id="opening-variant">
             <option value="targeted_leads">Targeted Leads</option>
             <option value="directory_leads">Directory Leads</option>
           </select>
@@ -47,6 +53,13 @@
       <section class="panel hidden" id="script-panel">
         <h2>Script</h2>
         <p class="subtitle" id="script-lead-type-label"></p>
+        <div class="row hidden" id="script-opening-variant-row">
+          <label for="script-opening-variant">Opening</label>
+          <select id="script-opening-variant">
+            <option value="targeted_leads">Targeted Leads</option>
+            <option value="directory_leads">Directory Leads</option>
+          </select>
+        </div>
         <pre id="opening-script" class="script-text"></pre>
         <button id="next-to-qualifying">Next</button>
       </section>

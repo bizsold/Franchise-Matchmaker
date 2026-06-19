@@ -84,8 +84,31 @@ const DEFAULT_BROKERS = [
 const SCRIPT_LEAD_TYPES = {
   franchise_show: "franchise_show",
   targeted_leads: "targeted_leads",
-  directory_leads: "directory_leads"
+  directory_leads: "directory_leads",
+  targeted_directory_leads: "targeted_directory_leads"
 };
+
+function isTargetedDirectoryGroup(leadType) {
+  return leadType === SCRIPT_LEAD_TYPES.targeted_directory_leads;
+}
+
+function getOpeningLeadTypeLabel(leadType) {
+  const labels = {
+    [SCRIPT_LEAD_TYPES.franchise_show]: "Franchise Show",
+    [SCRIPT_LEAD_TYPES.targeted_leads]: "Targeted Leads",
+    [SCRIPT_LEAD_TYPES.directory_leads]: "Directory Leads"
+  };
+  return labels[leadType] || leadType;
+}
+
+function resolveOpeningLeadType(mainType, variant) {
+  if (isTargetedDirectoryGroup(mainType)) {
+    return variant === SCRIPT_LEAD_TYPES.directory_leads
+      ? SCRIPT_LEAD_TYPES.directory_leads
+      : SCRIPT_LEAD_TYPES.targeted_leads;
+  }
+  return mainType || SCRIPT_LEAD_TYPES.franchise_show;
+}
 
 const MULTI_UNIT_MIN_LIQUID = 250_000;
 const MULTI_UNIT_MIN_NET_WORTH = 1_000_000;
@@ -463,6 +486,7 @@ const state = {
   role: "setter",
   isAdmin: false,
   leadType: SCRIPT_LEAD_TYPES.franchise_show,
+  leadTypeCategory: SCRIPT_LEAD_TYPES.franchise_show,
   answers: {},
   step: 0,
   bookingsToday: [],
@@ -483,6 +507,8 @@ const el = {
   setterName: document.getElementById("setter-name"),
   leadTypeRow: document.getElementById("lead-type-row"),
   leadType: document.getElementById("lead-type"),
+  openingVariantRow: document.getElementById("opening-variant-row"),
+  openingVariant: document.getElementById("opening-variant"),
   startSession: document.getElementById("start-session"),
   scriptPanel: document.getElementById("script-panel"),
   adminPanel: document.getElementById("admin-panel"),
@@ -491,6 +517,8 @@ const el = {
   resultsPanel: document.getElementById("results-panel"),
   openingScript: document.getElementById("opening-script"),
   scriptLeadTypeLabel: document.getElementById("script-lead-type-label"),
+  scriptOpeningVariantRow: document.getElementById("script-opening-variant-row"),
+  scriptOpeningVariant: document.getElementById("script-opening-variant"),
   nextToQualifying: document.getElementById("next-to-qualifying"),
   questionContainer: document.getElementById("question-container"),
   prevQuestion: document.getElementById("prev-question"),
@@ -1377,6 +1405,28 @@ function openingText(setterName) {
   return base.replace(/(\[Your Name\]\.?)(\n)(?!\n)/, "$1\n\n");
 }
 
+function updateOpeningVariantVisibility() {
+  const show = isTargetedDirectoryGroup(el.leadType?.value);
+  if (el.openingVariantRow) el.openingVariantRow.classList.toggle("hidden", !show);
+}
+
+function updateScriptOpeningVariantVisibility() {
+  const show = isTargetedDirectoryGroup(state.leadTypeCategory);
+  if (el.scriptOpeningVariantRow) el.scriptOpeningVariantRow.classList.toggle("hidden", !show);
+  if (show && el.scriptOpeningVariant) {
+    el.scriptOpeningVariant.value = state.leadType;
+  }
+}
+
+function refreshOpeningScriptDisplay() {
+  if (el.scriptLeadTypeLabel) {
+    el.scriptLeadTypeLabel.textContent = `Opening — ${getOpeningLeadTypeLabel(state.leadType)}`;
+  }
+  if (el.openingScript) {
+    el.openingScript.textContent = openingText(el.setterName.value);
+  }
+}
+
 function resetSession() {
   state.answers = {};
   state.step = 0;
@@ -1387,10 +1437,13 @@ function resetSession() {
   state.unqualifiedExportText = "";
   state.unqualifiedReturnStep = 0;
   state.leadType = SCRIPT_LEAD_TYPES.franchise_show;
+  state.leadTypeCategory = SCRIPT_LEAD_TYPES.franchise_show;
   el.setterName.value = "";
   el.adminCode.value = "";
   el.role.value = "setter";
   if (el.leadType) el.leadType.value = SCRIPT_LEAD_TYPES.franchise_show;
+  if (el.openingVariant) el.openingVariant.value = SCRIPT_LEAD_TYPES.targeted_leads;
+  updateOpeningVariantVisibility();
   el.adminCodeRow.classList.add("hidden");
   el.setterNameRow.classList.remove("hidden");
   if (el.leadTypeRow) el.leadTypeRow.classList.remove("hidden");
@@ -1427,6 +1480,13 @@ function resetSession() {
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
+el.leadType?.addEventListener("change", updateOpeningVariantVisibility);
+
+el.scriptOpeningVariant?.addEventListener("change", () => {
+  state.leadType = el.scriptOpeningVariant.value;
+  refreshOpeningScriptDisplay();
+});
+
 el.role.addEventListener("change", () => {
   const isAdmin = el.role.value === "admin";
   el.adminCodeRow.classList.toggle("hidden", !isAdmin);
@@ -1455,7 +1515,8 @@ el.startSession.addEventListener("click", async () => {
       return;
     }
   }
-  state.leadType = el.leadType?.value || SCRIPT_LEAD_TYPES.franchise_show;
+  state.leadTypeCategory = el.leadType?.value || SCRIPT_LEAD_TYPES.franchise_show;
+  state.leadType = resolveOpeningLeadType(state.leadTypeCategory, el.openingVariant?.value);
   state.db = new BookingStore();
   await refreshLiveState();
   state.bookingsToday = await state.db.fetchTodayBookings();
@@ -1466,15 +1527,8 @@ el.startSession.addEventListener("click", async () => {
     el.resultsPanel.classList.add("hidden");
     return;
   }
-  const leadTypeLabels = {
-    [SCRIPT_LEAD_TYPES.franchise_show]: "Franchise Show",
-    [SCRIPT_LEAD_TYPES.targeted_leads]: "Targeted Leads",
-    [SCRIPT_LEAD_TYPES.directory_leads]: "Directory Leads"
-  };
-  if (el.scriptLeadTypeLabel) {
-    el.scriptLeadTypeLabel.textContent = `Opening — ${leadTypeLabels[state.leadType] || state.leadType}`;
-  }
-  el.openingScript.textContent = openingText(el.setterName.value);
+  updateScriptOpeningVariantVisibility();
+  refreshOpeningScriptDisplay();
   el.scriptPanel.classList.remove("hidden");
   // Push a "session" entry so confirmation's replaceState leaves a "setter" entry to go back to.
   try {
@@ -1637,3 +1691,5 @@ window.addEventListener("popstate", (event) => {
     resetSession();
   }
 });
+
+updateOpeningVariantVisibility();
