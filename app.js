@@ -1447,6 +1447,14 @@ el.startSession.addEventListener("click", async () => {
     alert("Admin code invalid.");
     return;
   }
+  if (!state.isAdmin) {
+    const setterName = el.setterName?.value.trim() || "";
+    if (!setterName) {
+      alert("Please enter your name before starting.");
+      el.setterName?.focus();
+      return;
+    }
+  }
   state.leadType = el.leadType?.value || SCRIPT_LEAD_TYPES.franchise_show;
   state.db = new BookingStore();
   await refreshLiveState();
