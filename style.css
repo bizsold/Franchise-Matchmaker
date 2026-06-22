@@ -149,6 +149,23 @@ pre {
   border-top: 1px solid #e4e7ec;
 }
 
+.script-industry-section {
+  margin-top: 20px;
+  margin-bottom: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e4e7ec;
+}
+
+.script-industry-section h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.industry-interest-error {
+  color: #b42318;
+  margin-top: 8px;
+}
+
 #opening-script-dual h3 {
   margin: 20px 0 8px;
   font-size: 16px;
@@ -291,7 +308,161 @@ td a {
 }
 
 #broker-list td a {
-  word-break: break-all;
+  word-break: normal;
+}
+
+#broker-list .broker-money-cell,
+#broker-list .broker-credit-cell {
+  white-space: nowrap;
+  text-align: right;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+#broker-list th:nth-child(2),
+#broker-list td:nth-child(2),
+#broker-list th:nth-child(3),
+#broker-list td:nth-child(3) {
+  width: 56px;
+  max-width: 56px;
+}
+
+#broker-list th:nth-child(4),
+#broker-list td:nth-child(4) {
+  width: 36px;
+  max-width: 36px;
+}
+
+#broker-list .broker-status-cell {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#broker-list th:nth-child(7),
+#broker-list td:nth-child(7) {
+  width: 72px;
+  max-width: 72px;
+}
+
+#broker-list .broker-link-cell {
+  width: 40px;
+  max-width: 40px;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(10),
+#broker-list td:nth-child(10) {
+  width: 40px;
+  max-width: 40px;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(11),
+#broker-list td:nth-child(11) {
+  width: 52px;
+  max-width: 52px;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(12),
+#broker-list td:nth-child(12) {
+  width: 72px;
+  max-width: 72px;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(13),
+#broker-list td:nth-child(13) {
+  width: 96px;
+  max-width: 96px;
+  min-width: 96px;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(13) {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+#broker-list th:nth-child(14),
+#broker-list td:nth-child(14) {
+  width: 108px;
+  max-width: 108px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(15),
+#broker-list td:nth-child(15) {
+  width: 132px;
+  max-width: 132px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(16),
+#broker-list td:nth-child(16) {
+  width: 44px;
+  max-width: 44px;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(17),
+#broker-list td:nth-child(17) {
+  width: 36px;
+  max-width: 36px;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+#broker-list .broker-delete-btn {
+  padding: 4px 6px;
+  min-width: 0;
+}
+
+#broker-list .urgent-btn,
+.urgent-btn {
+  border: 2px solid #ea580c;
+  background: #fff;
+  color: #c2410c;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+#broker-list .urgent-btn:hover,
+.urgent-btn:hover {
+  background: #fff7ed;
+}
+
+#broker-list .urgent-btn.active,
+.urgent-btn.active {
+  background: #ea580c;
+  color: #fff;
+  border-color: #c2410c;
 }
 
 .match-warning-banner {
@@ -514,93 +685,6 @@ td a {
 /* Brokers admin: hard lock row + toggle */
 #broker-list tr.broker-row-hard-locked td {
   background: #fef2f2;
-}
-
-#broker-list th:nth-child(10),
-#broker-list td:nth-child(10) {
-  width: 52px;
-  max-width: 52px;
-  text-align: center;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-#broker-list th:nth-child(11),
-#broker-list td:nth-child(11) {
-  width: 72px;
-  max-width: 72px;
-  text-align: center;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-#broker-list .urgent-btn,
-.urgent-btn {
-  border: 2px solid #ea580c;
-  background: #fff;
-  color: #c2410c;
-  font-weight: 700;
-  font-size: 11px;
-  padding: 5px 8px;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  display: inline-block;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-
-#broker-list .urgent-btn:hover,
-.urgent-btn:hover {
-  background: #fff7ed;
-}
-
-#broker-list .urgent-btn.active,
-.urgent-btn.active {
-  background: #ea580c;
-  color: #fff;
-  border-color: #c2410c;
-}
-
-#broker-list th:nth-child(12),
-#broker-list td:nth-child(12) {
-  width: 96px;
-  max-width: 96px;
-  min-width: 96px;
-  text-align: center;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-#broker-list th:nth-child(12) {
-  font-size: 11px;
-  line-height: 1.2;
-}
-
-#broker-list th:nth-child(13),
-#broker-list td:nth-child(13) {
-  width: 108px;
-  max-width: 108px;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-#broker-list th:nth-child(14),
-#broker-list td:nth-child(14) {
-  width: 132px;
-  max-width: 132px;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-#broker-list th:nth-child(15),
-#broker-list td:nth-child(15),
-#broker-list th:nth-child(16),
-#broker-list td:nth-child(16) {
-  width: 64px;
-  max-width: 64px;
-  white-space: nowrap;
-  vertical-align: middle;
 }
 
 #broker-list .hard-lock-btn {

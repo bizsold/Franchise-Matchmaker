@@ -5,6 +5,12 @@ const SUPABASE_URL = "https://ohiholwyaagawjqyocpq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oaWhvbHd5YWFnYXdqcXlvY3BxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMzkyNzMsImV4cCI6MjA5MzgxNTI3M30.qqQmNslJASRxGuR_kpGv6-x05_erZWq52o4yUTL6qDk";
 const REGISTRATION_STATES = ["CA","HI","IL","IN","MD","MI","MN","NY","ND","RI","VA","WA","WI"];
 const NON_REGISTRATION_STATES = ["AL","AK","AZ","AR","CO","CT","DE","DC","FL","GA","ID","IA","KS","KY","LA","ME","MA","MS","MO","MT","NE","NV","NH","NJ","NM","NC","OH","OK","OR","PA","SC","SD","TN","TX","UT","VT","WV","WY"];
+const INDUSTRY_OPTIONS = [
+  { id: "food_restaurant", label: "Food/Restaurant" },
+  { id: "gas_convenience", label: "Gas Stations/Convenience Stores" },
+  { id: "health_senior_care", label: "Health & Senior Care" },
+  { id: "vending", label: "Vending" }
+];
 const ALL_CANADIAN_PROVINCES = ["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"];
 const CANADIAN_PROVINCE_NAMES = {
   AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick",
@@ -77,6 +83,7 @@ const locationModeSelect = document.getElementById("location-mode");
 const locationPicker = document.getElementById("location-picker");
 const locationPickerLabel = document.getElementById("location-picker-label");
 const locationNote = document.getElementById("location-note");
+const industryExclusionsPicker = document.getElementById("industry-exclusions-picker");
 const saveBrokerBtn = document.getElementById("save-broker-btn");
 const cancelEditBtn = document.getElementById("cancel-edit-btn");
 const saveFocusListBtn = document.getElementById("save-focus-list-btn");
@@ -273,6 +280,16 @@ function escapeAttr(value) {
   return String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
+function formatCompactMoney(amount) {
+  const n = Number(amount) || 0;
+  if (n >= 1_000_000) {
+    const millions = n / 1_000_000;
+    return millions % 1 === 0 ? `$${millions}M` : `$${millions.toFixed(1)}M`;
+  }
+  if (n >= 1_000) return `$${Math.round(n / 1000)}K`;
+  return `$${n.toLocaleString()}`;
+}
+
 async function logBookingEvent(event) {
   if (!supabaseClient) return false;
   const row = {
@@ -408,13 +425,43 @@ async function setBrokerTopPriorityInSupabase(brokerName, enabled) {
   return result.ok;
 }
 
+function normalizeIndustryExclusions(values) {
+  if (!Array.isArray(values)) return [];
+  const allowed = new Set(INDUSTRY_OPTIONS.map((opt) => opt.id));
+  return values.filter((id) => allowed.has(id));
+}
+
+function getIndustryExclusionLabels(exclusions) {
+  const list = normalizeIndustryExclusions(exclusions);
+  if (!list.length) return "-";
+  return list.map((id) => INDUSTRY_OPTIONS.find((opt) => opt.id === id)?.label || id).join(", ");
+}
+
+function renderIndustryExclusionsPicker(selected = []) {
+  if (!industryExclusionsPicker) return;
+  const selectedSet = new Set(normalizeIndustryExclusions(selected));
+  industryExclusionsPicker.innerHTML = INDUSTRY_OPTIONS.map((opt) => `
+    <label class="location-option">
+      <input type="checkbox" class="industry-exclusion-code" value="${opt.id}" ${selectedSet.has(opt.id) ? "checked" : ""} />
+      ${opt.label}
+    </label>
+  `).join("");
+}
+
+function getSelectedIndustryExclusions() {
+  return normalizeIndustryExclusions(
+    Array.from(document.querySelectorAll(".industry-exclusion-code:checked")).map((node) => node.value)
+  );
+}
+
 function normalizeBrokerLocation(broker) {
   const flags = {
     focus_for_date: broker.focus_for_date || null,
     focus_today: broker.focus_today === true,
     hard_locked: broker.hard_locked === true,
     multi_unit_router: broker.multi_unit_router === true,
-    top_priority: broker.top_priority === true
+    top_priority: broker.top_priority === true,
+    industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions)
   };
   if (broker.location_mode && Array.isArray(broker.location_states)) {
     return { ...broker, ...flags };
@@ -606,6 +653,7 @@ function fillFormForEdit(broker, index) {
   const multiUnitEl = document.getElementById("multi-unit-router");
   if (multiUnitEl) multiUnitEl.checked = broker.multi_unit_router === true;
   setUrgentFormBtnActive(broker.top_priority === true);
+  renderIndustryExclusionsPicker(broker.industry_exclusions || []);
   locationModeSelect.value = broker.location_mode || "us_wide";
   updateLocationPicker(broker.location_states || []);
   saveBrokerBtn.textContent = "Save Broker";
@@ -658,24 +706,27 @@ async function renderBrokers() {
       locked ? "broker-row-hard-locked" : "",
       bookedToday ? "broker-row-booked-today" : ""
     ].filter(Boolean).join(" ");
+    const statusText = (broker.requiresStatus || []).join(", ") || "Any";
+    const bookingUrl = broker.booking || "";
     return `
       <tr class="${rowClass}">
         <td>${broker.name || ""}</td>
-        <td>$${Number(broker.minLiquid || 0).toLocaleString()}</td>
-        <td>$${Number(broker.minNetWorth || 0).toLocaleString()}</td>
-        <td>${broker.minCredit || ""}+</td>
+        <td class="broker-money-cell">${formatCompactMoney(broker.minLiquid)}</td>
+        <td class="broker-money-cell">${formatCompactMoney(broker.minNetWorth)}</td>
+        <td class="broker-credit-cell">${broker.minCredit || ""}+</td>
         <td>${getModeLabel(broker.location_mode)}</td>
         <td>${(broker.location_states || []).join(", ") || "-"}</td>
-        <td>${(broker.requiresStatus || []).join(", ") || "Any"}</td>
+        <td class="broker-status-cell" title="${escapeAttr(statusText)}">${statusText}</td>
         <td>${broker.specialRequests || ""}</td>
-        <td><a href="${broker.booking}" target="_blank" rel="noopener noreferrer">${broker.booking}</a></td>
+        <td>${getIndustryExclusionLabels(broker.industry_exclusions)}</td>
+        <td class="broker-link-cell">${bookingUrl ? `<a href="${escapeAttr(bookingUrl)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(bookingUrl)}">Link</a>` : "-"}</td>
         <td><input class="focus-today-checkbox" type="checkbox" data-index="${originalIndex}" data-broker-focus="${broker.name}" ${broker.focus_today === true ? "checked" : ""} /></td>
         <td><input class="multi-unit-checkbox" type="checkbox" data-broker-name="${escapeAttr(broker.name || "")}" title="Multi-unit lead router" ${broker.multi_unit_router === true ? "checked" : ""} /></td>
         <td><button type="button" class="urgent-btn${urgent ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Urgent: show above focus list when matched">${urgent ? "✓ Urgent" : "Urgent"}</button></td>
         <td><button type="button" class="hard-lock-btn${locked ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Hard lock: exclude from all matching">${locked ? "🔒 Locked" : "🔒 Hard Lock"}</button></td>
         <td><button type="button" class="booked-today-btn${bookedToday ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Mark as booked for today (EST)">${bookedToday ? "✓ Booked Today" : "Mark Booked"}</button></td>
         <td><button class="icon-btn edit-btn" data-index="${originalIndex}" title="Edit">✏️</button></td>
-        <td><button class="icon-btn delete-btn" data-index="${originalIndex}" title="Delete">Delete</button></td>
+        <td><button class="icon-btn delete-btn broker-delete-btn" data-index="${originalIndex}" title="Delete">🗑</button></td>
       </tr>
     `;
   }).join("");
@@ -685,14 +736,15 @@ async function renderBrokers() {
       <thead>
         <tr>
           <th>Broker</th>
-          <th>Min Liquid</th>
-          <th>Min Net Worth</th>
-          <th>Credit</th>
+          <th>Min Liq</th>
+          <th>Net Worth</th>
+          <th>Cr.</th>
           <th>Location Mode</th>
           <th>Location States</th>
           <th>Status</th>
           <th>Special Requests</th>
-          <th>Booking Link</th>
+          <th>Industry Excl.</th>
+          <th>Link</th>
           <th>Focus</th>
           <th>Multi Unit</th>
           <th>Urgent</th>
@@ -816,6 +868,7 @@ form.addEventListener("submit", async (event) => {
   const booking = document.getElementById("booking-link").value.trim();
   const multiUnitRouter = document.getElementById("multi-unit-router")?.checked === true;
   const topPriority = document.getElementById("top-priority-btn")?.classList.contains("active") === true;
+  const industryExclusions = getSelectedIndustryExclusions();
 
   if (!name || !booking) {
     message.textContent = "Please complete all required fields.";
@@ -834,7 +887,8 @@ form.addEventListener("submit", async (event) => {
     specialRequests,
     booking,
     multi_unit_router: multiUnitRouter,
-    top_priority: topPriority
+    top_priority: topPriority,
+    industry_exclusions: industryExclusions
   };
 
   let savedBroker;
@@ -866,6 +920,7 @@ form.addEventListener("submit", async (event) => {
   cancelEditBtn.classList.add("hidden");
   locationModeSelect.value = "us_wide";
   updateLocationPicker([]);
+  renderIndustryExclusionsPicker([]);
   message.textContent = upsertResult.ok
     ? `${name} saved to master broker database.`
     : `${name} saved locally, but Supabase sync failed. Check network or that the brokers table exists.`;
@@ -895,6 +950,7 @@ cancelEditBtn.addEventListener("click", () => {
   cancelEditBtn.classList.add("hidden");
   locationModeSelect.value = "us_wide";
   updateLocationPicker([]);
+  renderIndustryExclusionsPicker([]);
   message.textContent = "Edit cancelled.";
 });
 
@@ -904,6 +960,7 @@ document.getElementById("top-priority-btn")?.addEventListener("click", () => {
 });
 
 updateLocationPicker([]);
+renderIndustryExclusionsPicker([]);
 
 saveFocusListBtn.addEventListener("click", async () => {
   snapshotFocusCheckboxesToDraft();

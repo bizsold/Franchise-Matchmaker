@@ -41,6 +41,11 @@
           </div>
           <div class="row"><label for="status">Status</label><input id="status" placeholder="Example: US Citizen, Green Card, Any" /></div>
           <div class="row"><label for="special-requests">Special Requests</label><input id="special-requests" placeholder="Industry preferences, constraints, etc." /></div>
+          <div class="row stack">
+            <label>Industry Exclusions</label>
+            <p class="subtitle">Brokers with an industry selected here will not appear when a lead chooses that industry.</p>
+            <div id="industry-exclusions-picker" class="location-picker"></div>
+          </div>
           <div class="row"><label for="booking-link">Booking Link</label><input id="booking-link" type="url" placeholder="https://..." required /></div>
           <div class="row">
             <label class="checkbox-label"><input id="multi-unit-router" type="checkbox" /> Multi Unit router</label>

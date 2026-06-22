@@ -116,6 +116,13 @@ const UNQUALIFIED_STATUS_LABELS = {
   net_worth_under_200k: "Net worth under $200K"
 };
 const MULTI_UNIT_ANSWER_ID = "multiUnitInterested";
+const INDUSTRY_INTEREST_KEY = "industryInterest";
+const INDUSTRY_OPTIONS = [
+  { id: "food_restaurant", label: "Food/Restaurant" },
+  { id: "gas_convenience", label: "Gas Stations/Convenience Stores" },
+  { id: "health_senior_care", label: "Health & Senior Care" },
+  { id: "vending", label: "Vending" }
+];
 
 /** Maps matching roles to question ids used in script config (supports renames in Script admin). */
 const QUESTION_ROLE_ALIASES = {
@@ -281,13 +288,25 @@ No problem. Sometimes invites end up in spam or another folder. Could you check 
   multiUnitQuestion: { ...DEFAULT_MULTI_UNIT_QUESTION }
 };
 
+function normalizeIndustryExclusions(values) {
+  if (!Array.isArray(values)) return [];
+  const allowed = new Set(INDUSTRY_OPTIONS.map((opt) => opt.id));
+  return values.filter((id) => allowed.has(id));
+}
+
+function getIndustryInterestLabel(value) {
+  if (!value || value === "none") return "None";
+  return INDUSTRY_OPTIONS.find((opt) => opt.id === value)?.label || value;
+}
+
 function normalizeBrokerLocation(broker) {
   const flags = {
     focus_for_date: broker.focus_for_date || null,
     focus_today: broker.focus_today === true,
     hard_locked: broker.hard_locked === true,
     multi_unit_router: broker.multi_unit_router === true,
-    top_priority: broker.top_priority === true
+    top_priority: broker.top_priority === true,
+    industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions)
   };
   if (broker.location_mode && Array.isArray(broker.location_states)) {
     return { ...broker, ...flags };
@@ -545,6 +564,8 @@ const el = {
   openingScriptDirectory: document.getElementById("opening-script-directory"),
   openingScriptShared: document.getElementById("opening-script-shared"),
   scriptLeadTypeLabel: document.getElementById("script-lead-type-label"),
+  industryInterestButtons: document.getElementById("industry-interest-buttons"),
+  industryInterestError: document.getElementById("industry-interest-error"),
   nextToQualifying: document.getElementById("next-to-qualifying"),
   questionContainer: document.getElementById("question-container"),
   prevQuestion: document.getElementById("prev-question"),
@@ -1035,6 +1056,13 @@ function isFinancialMatch(broker, lead) {
     (!broker.requiresStatus || broker.requiresStatus.includes(lead.status));
 }
 
+function brokerMatchesIndustry(broker, lead) {
+  const interest = lead.industryInterest;
+  if (!interest || interest === "none") return true;
+  const exclusions = normalizeIndustryExclusions(broker.industry_exclusions);
+  return !exclusions.includes(interest);
+}
+
 function getScore(broker, lead) {
   return Math.abs(lead.liquidity - broker.minLiquid) + Math.abs(lead.netWorth - broker.minNetWorth) + Math.abs(lead.creditScore - broker.minCredit) * 1000;
 }
@@ -1048,7 +1076,7 @@ function filterBrokers(brokers, candidate, ignoreBookingExclusion) {
   const { lead, bookedNames } = candidate;
   const bookedSet = bookedNames instanceof Set ? bookedNames : new Set(bookedNames || []);
   let pool = brokers.filter((b) => b.hard_locked !== true);
-  pool = pool.filter((b) => isFinancialMatch(b, lead) && matchesLocation(b, lead.state, lead.country));
+  pool = pool.filter((b) => isFinancialMatch(b, lead) && matchesLocation(b, lead.state, lead.country) && brokerMatchesIndustry(b, lead));
   pool.sort((a, b) => getScore(a, lead) - getScore(b, lead));
   if (!ignoreBookingExclusion) {
     pool = pool.filter((b) => !bookedSet.has(b.name));
@@ -1205,6 +1233,7 @@ async function runMatching() {
     city: state.answers.city,
     state: leadState,
     country: state.answers.country,
+    industryInterest: state.answers[INDUSTRY_INTEREST_KEY] || "none",
     timezone: getTimezone()
   };
   if (state.db) {
@@ -1276,6 +1305,7 @@ async function runMatching() {
       <tr><th>Credit</th><td>${lead.creditScore}+</td></tr>
       <tr><th>Status</th><td>${lead.status}</td></tr>
       <tr><th>Timeline</th><td>${lead.timeline}</td></tr>
+      <tr><th>Industry Interest</th><td>${getIndustryInterestLabel(lead.industryInterest)}</td></tr>
       <tr><th>Location</th><td>${lead.city}, ${lead.state || state.answers.stateInput} (${lead.country})</td></tr>
       <tr><th>Timezone</th><td>${lead.timezone}</td></tr>
     </tbody></table>
@@ -1434,6 +1464,36 @@ function openingText(setterName, leadType) {
   return applySetterNameToScript(setterName, raw);
 }
 
+function refreshIndustryInterestButtons() {
+  if (!el.industryInterestButtons) return;
+  const selected = state.answers[INDUSTRY_INTEREST_KEY];
+  const options = [
+    ...INDUSTRY_OPTIONS,
+    { id: "none", label: "None" }
+  ];
+  el.industryInterestButtons.innerHTML = options.map((opt) => {
+    const active = selected === opt.id ? "active" : "";
+    return `<button type="button" class="option industry-interest-option ${active}" data-industry-id="${opt.id}">${opt.label}</button>`;
+  }).join("");
+  el.industryInterestButtons.querySelectorAll(".industry-interest-option").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.answers[INDUSTRY_INTEREST_KEY] = btn.dataset.industryId;
+      refreshIndustryInterestButtons();
+      updateNextToQualifyingState();
+    });
+  });
+  updateNextToQualifyingState();
+}
+
+function updateNextToQualifyingState() {
+  if (!el.nextToQualifying) return;
+  const hasSelection = state.answers[INDUSTRY_INTEREST_KEY] !== undefined;
+  el.nextToQualifying.disabled = !hasSelection;
+  if (el.industryInterestError) {
+    el.industryInterestError.classList.toggle("hidden", hasSelection);
+  }
+}
+
 function refreshOpeningScriptDisplay() {
   const setterName = el.setterName.value;
   const showDual = isTargetedDirectoryGroup(state.leadType);
@@ -1461,6 +1521,7 @@ function refreshOpeningScriptDisplay() {
   } else if (el.openingScript) {
     el.openingScript.textContent = openingText(setterName, state.leadType);
   }
+  refreshIndustryInterestButtons();
 }
 
 function resetSession() {
@@ -1563,6 +1624,10 @@ el.startSession.addEventListener("click", async () => {
 });
 
 el.nextToQualifying.addEventListener("click", () => {
+  if (state.answers[INDUSTRY_INTEREST_KEY] === undefined) {
+    if (el.industryInterestError) el.industryInterestError.classList.remove("hidden");
+    return;
+  }
   el.questionsPanel.classList.remove("hidden");
   renderQuestion();
 });
