@@ -83,6 +83,7 @@ const DEFAULT_BROKERS = [
 
 const SCRIPT_LEAD_TYPES = {
   franchise_show: "franchise_show",
+  assessment_leads: "assessment_leads",
   targeted_leads: "targeted_leads",
   directory_leads: "directory_leads",
   targeted_directory_leads: "targeted_directory_leads"
@@ -92,9 +93,21 @@ function isTargetedDirectoryGroup(leadType) {
   return leadType === SCRIPT_LEAD_TYPES.targeted_directory_leads;
 }
 
+function isAssessmentLeads(leadType) {
+  return leadType === SCRIPT_LEAD_TYPES.assessment_leads;
+}
+
+const ASSESSMENT_BROKER_NAME = "Daniel Purim";
+
+function isAssessmentOnlyBroker(broker) {
+  if (!broker) return false;
+  return broker.assessmentOnly === true || broker.name === ASSESSMENT_BROKER_NAME;
+}
+
 function getOpeningLeadTypeLabel(leadType) {
   const labels = {
     [SCRIPT_LEAD_TYPES.franchise_show]: "Franchise Show",
+    [SCRIPT_LEAD_TYPES.assessment_leads]: "Assessment Leads",
     [SCRIPT_LEAD_TYPES.targeted_leads]: "Targeted Leads",
     [SCRIPT_LEAD_TYPES.directory_leads]: "Directory Leads",
     [SCRIPT_LEAD_TYPES.targeted_directory_leads]: "Targeted / Directory Leads"
@@ -306,6 +319,7 @@ function normalizeBrokerLocation(broker) {
     hard_locked: broker.hard_locked === true,
     multi_unit_router: broker.multi_unit_router === true,
     top_priority: broker.top_priority === true,
+    assessmentOnly: isAssessmentOnlyBroker(broker),
     industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions)
   };
   if (broker.location_mode && Array.isArray(broker.location_states)) {
@@ -474,9 +488,12 @@ function normalizeScriptConfig(parsed) {
 }
 
 function getOpeningScriptText(config, leadType) {
+  const resolvedLeadType = isAssessmentLeads(leadType)
+    ? SCRIPT_LEAD_TYPES.franchise_show
+    : leadType;
   const scripts = config?.openingScripts;
-  if (scripts && scripts[leadType]) return scripts[leadType];
-  if (leadType === SCRIPT_LEAD_TYPES.franchise_show && config?.openingScript) {
+  if (scripts && scripts[resolvedLeadType]) return scripts[resolvedLeadType];
+  if (resolvedLeadType === SCRIPT_LEAD_TYPES.franchise_show && config?.openingScript) {
     return config.openingScript;
   }
   return scripts?.franchise_show || config?.openingScript || "";
@@ -1011,7 +1028,7 @@ function meetsMultiUnitThresholds() {
 }
 
 function syncMultiUnitAnswerState() {
-  if (!meetsMultiUnitThresholds()) {
+  if (isAssessmentLeads(state.leadType) || !meetsMultiUnitThresholds()) {
     delete state.answers[MULTI_UNIT_ANSWER_ID];
   }
 }
@@ -1036,13 +1053,50 @@ function getFocusListBrokers(brokers) {
   return (brokers || []).filter((b) => b.focus_today === true);
 }
 
+function getAssessmentOnlyBrokers(brokers) {
+  return (brokers || []).filter(isAssessmentOnlyBroker);
+}
+
+function excludeAssessmentOnlyBrokers(brokers) {
+  return (brokers || []).filter((b) => !isAssessmentOnlyBroker(b));
+}
+
+function runStandardMatching(brokers, candidate, options = {}) {
+  const { allowMultiUnit = true } = options;
+  let brokerPool = excludeAssessmentOnlyBrokers(brokers);
+  let multiUnitInterested = false;
+  let multiUnitGateVoided = false;
+
+  if (allowMultiUnit) {
+    multiUnitInterested = wantsMultiUnitOnlyMatching();
+    if (multiUnitInterested) {
+      if (areAllMultiUnitBrokersBookedToday(brokers, candidate.bookedNames)) {
+        multiUnitGateVoided = true;
+        brokerPool = getFocusListBrokers(brokerPool);
+      } else {
+        brokerPool = getMultiUnitBrokers(brokerPool);
+      }
+    }
+  }
+
+  let eligibleBrokers = filterBrokers(brokerPool, candidate, false);
+  let bookingFallbackActive = false;
+  if (!eligibleBrokers.length) {
+    eligibleBrokers = filterBrokers(brokerPool, candidate, true);
+    bookingFallbackActive = eligibleBrokers.length > 0;
+  }
+
+  return { eligibleBrokers, bookingFallbackActive, multiUnitInterested, multiUnitGateVoided, brokerPool };
+}
+
 /** @returns {{ type: "script", index: number } | { type: "multi_unit" }[]} */
 function getQuestionFlow() {
   const questions = state.scriptConfig?.questions || [];
   const flow = [];
+  const skipMultiUnit = isAssessmentLeads(state.leadType);
   questions.forEach((q, index) => {
     flow.push({ type: "script", index });
-    if (questionIdMatchesRole(q.id, "netWorth") && meetsMultiUnitThresholds()) {
+    if (!skipMultiUnit && questionIdMatchesRole(q.id, "netWorth") && meetsMultiUnitThresholds()) {
       flow.push({ type: "multi_unit" });
     }
   });
@@ -1071,11 +1125,16 @@ function getScore(broker, lead) {
  * @param {object[]} brokers - master roster (with focus_today already merged).
  * @param {{ lead: object, bookedNames: Set|Iterable }} candidate - lead includes normalized state code on `state`, plus financial fields; bookedNames is today's booked broker names.
  * @param {boolean} ignoreBookingExclusion - when false, exclude brokers booked today; when true, keep them (fallback pass).
+ * @param {{ includeAssessmentBrokers?: boolean }} [options] - when true, allow assessment-only brokers (Assessment Leads routing).
  */
-function filterBrokers(brokers, candidate, ignoreBookingExclusion) {
+function filterBrokers(brokers, candidate, ignoreBookingExclusion, options = {}) {
+  const { includeAssessmentBrokers = false } = options;
   const { lead, bookedNames } = candidate;
   const bookedSet = bookedNames instanceof Set ? bookedNames : new Set(bookedNames || []);
   let pool = brokers.filter((b) => b.hard_locked !== true);
+  if (!includeAssessmentBrokers) {
+    pool = pool.filter((b) => !isAssessmentOnlyBroker(b));
+  }
   pool = pool.filter((b) => isFinancialMatch(b, lead) && matchesLocation(b, lead.state, lead.country) && brokerMatchesIndustry(b, lead));
   pool.sort((a, b) => getScore(a, lead) - getScore(b, lead));
   if (!ignoreBookingExclusion) {
@@ -1242,27 +1301,60 @@ async function runMatching() {
   const bookedNames = new Set((state.bookingsToday || []).map((row) => row.broker_name));
   const candidate = { lead, bookedNames };
 
-  let brokerPool = state.brokers;
-  const multiUnitInterested = wantsMultiUnitOnlyMatching();
-  let multiUnitGateVoided = false;
-  if (multiUnitInterested) {
-    if (areAllMultiUnitBrokersBookedToday(state.brokers, bookedNames)) {
-      multiUnitGateVoided = true;
-      brokerPool = getFocusListBrokers(state.brokers);
-    } else {
-      brokerPool = getMultiUnitBrokers(brokerPool);
-    }
-  }
-
-  let eligibleBrokers = filterBrokers(brokerPool, candidate, false);
+  const assessmentLead = isAssessmentLeads(state.leadType);
+  let eligibleBrokers = [];
   let bookingFallbackActive = false;
-  if (!eligibleBrokers.length) {
-    eligibleBrokers = filterBrokers(brokerPool, candidate, true);
-    bookingFallbackActive = eligibleBrokers.length > 0;
+  let multiUnitInterested = false;
+  let multiUnitGateVoided = false;
+  let brokerPool = state.brokers;
+  let assessmentRouted = false;
+  let assessmentFallback = false;
+
+  if (assessmentLead) {
+    const assessmentBrokers = getAssessmentOnlyBrokers(state.brokers);
+    let assessmentMatches = filterBrokers(assessmentBrokers, candidate, false, { includeAssessmentBrokers: true });
+    if (!assessmentMatches.length) {
+      assessmentMatches = filterBrokers(assessmentBrokers, candidate, true, { includeAssessmentBrokers: true });
+      if (assessmentMatches.length) bookingFallbackActive = true;
+    }
+    if (assessmentMatches.length) {
+      eligibleBrokers = assessmentMatches;
+      assessmentRouted = true;
+      assessmentFallback = false;
+    } else {
+      assessmentFallback = true;
+      const standard = runStandardMatching(state.brokers, candidate, { allowMultiUnit: false });
+      eligibleBrokers = standard.eligibleBrokers;
+      bookingFallbackActive = standard.bookingFallbackActive;
+      brokerPool = standard.brokerPool;
+    }
+  } else {
+    const standard = runStandardMatching(state.brokers, candidate, { allowMultiUnit: true });
+    eligibleBrokers = standard.eligibleBrokers;
+    bookingFallbackActive = standard.bookingFallbackActive;
+    multiUnitInterested = standard.multiUnitInterested;
+    multiUnitGateVoided = standard.multiUnitGateVoided;
+    brokerPool = standard.brokerPool;
   }
 
   if (el.matchFallbackBanner) {
-    if (multiUnitInterested && multiUnitGateVoided) {
+    if (assessmentRouted) {
+      el.matchFallbackBanner.textContent = bookingFallbackActive
+        ? "Assessment lead — routed to Daniel Purim (booked today fallback)."
+        : "Assessment lead — routed to Daniel Purim.";
+      el.matchFallbackBanner.classList.remove("hidden");
+    } else if (assessmentFallback) {
+      if (!eligibleBrokers.length) {
+        el.matchFallbackBanner.textContent = "Lead did not meet Daniel Purim's criteria — no standard matches found.";
+        el.matchFallbackBanner.classList.remove("hidden");
+      } else if (bookingFallbackActive) {
+        el.matchFallbackBanner.textContent = "Lead did not meet Daniel Purim's criteria — showing standard matches (including previously booked brokers).";
+        el.matchFallbackBanner.classList.remove("hidden");
+      } else {
+        el.matchFallbackBanner.textContent = "Lead did not meet Daniel Purim's criteria — showing standard matches.";
+        el.matchFallbackBanner.classList.remove("hidden");
+      }
+    } else if (multiUnitInterested && multiUnitGateVoided) {
       if (!brokerPool.length) {
         el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today, but no brokers are on today's focus list. Add focus brokers in Brokers admin.";
         el.matchFallbackBanner.classList.remove("hidden");
@@ -1294,7 +1386,7 @@ async function runMatching() {
   const tier1 = eligibleBrokers.filter(b => FOCUS_LIST.includes(b.name) && !TOP_PRIORITY_LIST.includes(b.name));
   const tier2 = eligibleBrokers.filter(b => !FOCUS_LIST.includes(b.name) && !TOP_PRIORITY_LIST.includes(b.name));
 
-  const multiUnitRow = meetsMultiUnitThresholds()
+  const multiUnitRow = !assessmentLead && meetsMultiUnitThresholds()
     ? `<tr><th>Multi-Unit Interest</th><td>${state.answers[MULTI_UNIT_ANSWER_ID] === true ? "Yes" : state.answers[MULTI_UNIT_ANSWER_ID] === false ? "No" : "—"}</td></tr>`
     : "";
   el.candidateSummary.innerHTML = `
@@ -1369,7 +1461,7 @@ function renderCandidateInfoTable() {
     ["Setter Name", el.setterName.value ? escapeHTML(el.setterName.value) : "—"],
     ["Liquid Capital", Number.isFinite(liquidity) ? `$${liquidity.toLocaleString()}` : "—"],
     ["Net Worth", Number.isFinite(netWorth) ? `$${netWorth.toLocaleString()}` : "—"],
-    ...(meetsMultiUnitThresholds()
+    ...(meetsMultiUnitThresholds() && !isAssessmentLeads(state.leadType)
       ? [["Multi-Unit Interest", a[MULTI_UNIT_ANSWER_ID] === true ? "Yes" : a[MULTI_UNIT_ANSWER_ID] === false ? "No" : "—"]]
       : []),
     ["Credit Score", formatCreditScoreDisplay(creditRaw)],

@@ -425,6 +425,13 @@ async function setBrokerTopPriorityInSupabase(brokerName, enabled) {
   return result.ok;
 }
 
+const ASSESSMENT_BROKER_NAME = "Daniel Purim";
+
+function isAssessmentOnlyBroker(broker) {
+  if (!broker) return false;
+  return broker.assessmentOnly === true || broker.name === ASSESSMENT_BROKER_NAME;
+}
+
 function normalizeIndustryExclusions(values) {
   if (!Array.isArray(values)) return [];
   const allowed = new Set(INDUSTRY_OPTIONS.map((opt) => opt.id));
@@ -461,6 +468,7 @@ function normalizeBrokerLocation(broker) {
     hard_locked: broker.hard_locked === true,
     multi_unit_router: broker.multi_unit_router === true,
     top_priority: broker.top_priority === true,
+    assessmentOnly: isAssessmentOnlyBroker(broker),
     industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions)
   };
   if (broker.location_mode && Array.isArray(broker.location_states)) {
