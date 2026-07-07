@@ -469,7 +469,8 @@ function normalizeBrokerLocation(broker) {
     multi_unit_router: broker.multi_unit_router === true,
     top_priority: broker.top_priority === true,
     assessmentOnly: isAssessmentOnlyBroker(broker),
-    industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions)
+    industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions),
+    requiresStatus: normalizeRequiresStatus(broker.requiresStatus) || undefined
   };
   if (broker.location_mode && Array.isArray(broker.location_states)) {
     return { ...broker, ...flags };
@@ -572,9 +573,43 @@ function ensureDefaultRoster() {
 }
 
 function parseStatus(statusText) {
-  const cleaned = statusText.trim();
-  if (!cleaned || cleaned.toLowerCase() === "any") return undefined;
-  return cleaned.split(",").map((x) => x.trim()).filter(Boolean);
+  return normalizeRequiresStatus(statusText) || undefined;
+}
+
+const CITIZENSHIP_STATUS_CANONICAL = {
+  "us citizen": "US Citizen",
+  "citizen": "US Citizen",
+  "u.s. citizen": "US Citizen",
+  "green card": "Green Card",
+  "green card holder": "Green Card",
+  "permanent resident": "Green Card",
+  "visa holder": "Visa Holder",
+  "visa": "Visa Holder",
+  "none of the above": "None of the above"
+};
+
+function normalizeCitizenshipStatus(value) {
+  if (value === undefined || value === null) return "";
+  const trimmed = String(value).trim();
+  if (!trimmed) return "";
+  return CITIZENSHIP_STATUS_CANONICAL[trimmed.toLowerCase()] || trimmed;
+}
+
+function normalizeRequiresStatus(requiresStatus) {
+  if (requiresStatus === undefined || requiresStatus === null) return null;
+  let parts = [];
+  if (Array.isArray(requiresStatus)) {
+    parts = requiresStatus.flatMap((item) => {
+      if (typeof item !== "string") return [];
+      return item.split(",").map((x) => x.trim()).filter(Boolean);
+    });
+  } else if (typeof requiresStatus === "string") {
+    const cleaned = requiresStatus.trim();
+    if (!cleaned || cleaned.toLowerCase() === "any") return null;
+    parts = cleaned.split(",").map((x) => x.trim()).filter(Boolean);
+  }
+  const normalized = parts.map(normalizeCitizenshipStatus).filter(Boolean);
+  return normalized.length ? [...new Set(normalized)] : null;
 }
 
 function getModeLabel(mode) {

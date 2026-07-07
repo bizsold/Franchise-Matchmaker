@@ -312,6 +312,51 @@ function getIndustryInterestLabel(value) {
   return INDUSTRY_OPTIONS.find((opt) => opt.id === value)?.label || value;
 }
 
+const CITIZENSHIP_STATUS_CANONICAL = {
+  "us citizen": "US Citizen",
+  "citizen": "US Citizen",
+  "u.s. citizen": "US Citizen",
+  "green card": "Green Card",
+  "green card holder": "Green Card",
+  "permanent resident": "Green Card",
+  "visa holder": "Visa Holder",
+  "visa": "Visa Holder",
+  "none of the above": "None of the above"
+};
+
+function normalizeCitizenshipStatus(value) {
+  if (value === undefined || value === null) return "";
+  const trimmed = String(value).trim();
+  if (!trimmed) return "";
+  return CITIZENSHIP_STATUS_CANONICAL[trimmed.toLowerCase()] || trimmed;
+}
+
+/** Broker accepts any listed status (OR). Returns null when broker accepts all statuses. */
+function normalizeRequiresStatus(requiresStatus) {
+  if (requiresStatus === undefined || requiresStatus === null) return null;
+  let parts = [];
+  if (Array.isArray(requiresStatus)) {
+    parts = requiresStatus.flatMap((item) => {
+      if (typeof item !== "string") return [];
+      return item.split(",").map((x) => x.trim()).filter(Boolean);
+    });
+  } else if (typeof requiresStatus === "string") {
+    const cleaned = requiresStatus.trim();
+    if (!cleaned || cleaned.toLowerCase() === "any") return null;
+    parts = cleaned.split(",").map((x) => x.trim()).filter(Boolean);
+  }
+  const normalized = parts.map(normalizeCitizenshipStatus).filter(Boolean);
+  return normalized.length ? [...new Set(normalized)] : null;
+}
+
+function leadMatchesBrokerStatus(leadStatus, brokerRequiresStatus) {
+  const allowed = normalizeRequiresStatus(brokerRequiresStatus);
+  if (!allowed) return true;
+  const normalizedLead = normalizeCitizenshipStatus(leadStatus);
+  if (!normalizedLead || normalizedLead === "None of the above") return false;
+  return allowed.includes(normalizedLead);
+}
+
 function normalizeBrokerLocation(broker) {
   const flags = {
     focus_for_date: broker.focus_for_date || null,
@@ -320,7 +365,8 @@ function normalizeBrokerLocation(broker) {
     multi_unit_router: broker.multi_unit_router === true,
     top_priority: broker.top_priority === true,
     assessmentOnly: isAssessmentOnlyBroker(broker),
-    industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions)
+    industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions),
+    requiresStatus: normalizeRequiresStatus(broker.requiresStatus) || undefined
   };
   if (broker.location_mode && Array.isArray(broker.location_states)) {
     return { ...broker, ...flags };
@@ -1107,7 +1153,7 @@ function isFinancialMatch(broker, lead) {
   return lead.liquidity >= broker.minLiquid &&
     lead.netWorth >= broker.minNetWorth &&
     lead.creditScore >= broker.minCredit &&
-    (!broker.requiresStatus || broker.requiresStatus.includes(lead.status));
+    leadMatchesBrokerStatus(lead.status, broker.requiresStatus);
 }
 
 function brokerMatchesIndustry(broker, lead) {
