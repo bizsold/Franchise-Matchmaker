@@ -132,7 +132,6 @@ const MULTI_UNIT_ANSWER_ID = "multiUnitInterested";
 const INDUSTRY_INTEREST_KEY = "industryInterest";
 const INDUSTRY_OPTIONS = [
   { id: "food_restaurant", label: "Food/Restaurant" },
-  { id: "gas_convenience", label: "Gas Stations/Convenience Stores" },
   { id: "health_senior_care", label: "Health & Senior Care" },
   { id: "vending", label: "Vending" }
 ];

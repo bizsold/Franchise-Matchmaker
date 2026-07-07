@@ -7,7 +7,6 @@ const REGISTRATION_STATES = ["CA","HI","IL","IN","MD","MI","MN","NY","ND","RI","
 const NON_REGISTRATION_STATES = ["AL","AK","AZ","AR","CO","CT","DE","DC","FL","GA","ID","IA","KS","KY","LA","ME","MA","MS","MO","MT","NE","NV","NH","NJ","NM","NC","OH","OK","OR","PA","SC","SD","TN","TX","UT","VT","WV","WY"];
 const INDUSTRY_OPTIONS = [
   { id: "food_restaurant", label: "Food/Restaurant" },
-  { id: "gas_convenience", label: "Gas Stations/Convenience Stores" },
   { id: "health_senior_care", label: "Health & Senior Care" },
   { id: "vending", label: "Vending" }
 ];
@@ -461,6 +460,33 @@ function getSelectedIndustryExclusions() {
   );
 }
 
+async function syncStrippedIndustryExclusions(brokers) {
+  if (!Array.isArray(brokers) || !brokers.length) return brokers;
+  let changed = false;
+  const synced = brokers.map((broker) => {
+    const normalizedList = normalizeIndustryExclusions(broker.industry_exclusions);
+    const previousList = Array.isArray(broker.industry_exclusions) ? broker.industry_exclusions : [];
+    const listChanged = previousList.length !== normalizedList.length
+      || previousList.some((id, index) => id !== normalizedList[index]);
+    if (listChanged) changed = true;
+    return normalizeBrokerLocation({ ...broker, industry_exclusions: normalizedList });
+  });
+  if (!changed) return synced;
+
+  saveBrokers(synced);
+  for (const broker of synced) {
+    const before = brokers.find((b) => b.name === broker.name);
+    const beforeList = Array.isArray(before?.industry_exclusions) ? before.industry_exclusions : [];
+    const afterList = broker.industry_exclusions || [];
+    const listChanged = beforeList.length !== afterList.length
+      || beforeList.some((id, index) => id !== afterList[index]);
+    if (listChanged) {
+      await upsertBrokerToSupabase(broker);
+    }
+  }
+  return synced;
+}
+
 function normalizeBrokerLocation(broker) {
   const flags = {
     focus_for_date: broker.focus_for_date || null,
@@ -719,6 +745,8 @@ async function renderBrokers() {
   } else {
     sourceBrokers = readBrokers();
   }
+
+  sourceBrokers = await syncStrippedIndustryExclusions(sourceBrokers);
 
   const focusDraft = readFocusDraft();
   const rawBrokers = sourceBrokers.map((b) => ({
