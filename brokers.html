@@ -50,6 +50,14 @@
           <div class="row">
             <label class="checkbox-label"><input id="multi-unit-router" type="checkbox" /> Multi Unit router</label>
           </div>
+          <div class="row stack">
+            <label class="checkbox-label"><input id="net-worth-limiter-enabled" type="checkbox" /> Net Worth Limiter</label>
+            <p class="subtitle">When enabled, this broker will not match leads with net worth above the limit.</p>
+            <div id="net-worth-limiter-fields" class="row hidden" style="margin: 8px 0 0;">
+              <label for="net-worth-limiter">Max Net Worth</label>
+              <input id="net-worth-limiter" type="number" min="0" step="1" placeholder="e.g. 500000" />
+            </div>
+          </div>
           <div class="row">
             <label>Urgent</label>
             <button type="button" id="top-priority-btn" class="urgent-btn" aria-pressed="false">Urgent</button>

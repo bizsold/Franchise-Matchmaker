@@ -356,7 +356,24 @@ function leadMatchesBrokerStatus(leadStatus, brokerRequiresStatus) {
   return allowed.includes(normalizedLead);
 }
 
+function normalizeNetWorthLimiter(broker) {
+  const enabled = broker.net_worth_limiter_enabled === true;
+  const raw = Number(broker.net_worth_limiter);
+  const limit = Number.isFinite(raw) && raw > 0 ? raw : null;
+  return {
+    net_worth_limiter_enabled: enabled && limit !== null,
+    net_worth_limiter: enabled && limit !== null ? limit : null
+  };
+}
+
+function brokerMatchesNetWorthLimiter(broker, lead) {
+  const limiter = normalizeNetWorthLimiter(broker);
+  if (!limiter.net_worth_limiter_enabled) return true;
+  return Number(lead.netWorth) <= limiter.net_worth_limiter;
+}
+
 function normalizeBrokerLocation(broker) {
+  const limiter = normalizeNetWorthLimiter(broker);
   const flags = {
     focus_for_date: broker.focus_for_date || null,
     focus_today: broker.focus_today === true,
@@ -365,7 +382,9 @@ function normalizeBrokerLocation(broker) {
     top_priority: broker.top_priority === true,
     assessmentOnly: isAssessmentOnlyBroker(broker),
     industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions),
-    requiresStatus: normalizeRequiresStatus(broker.requiresStatus) || undefined
+    requiresStatus: normalizeRequiresStatus(broker.requiresStatus) || undefined,
+    net_worth_limiter_enabled: limiter.net_worth_limiter_enabled,
+    net_worth_limiter: limiter.net_worth_limiter
   };
   if (broker.location_mode && Array.isArray(broker.location_states)) {
     return { ...broker, ...flags };
@@ -1152,7 +1171,8 @@ function isFinancialMatch(broker, lead) {
   return lead.liquidity >= broker.minLiquid &&
     lead.netWorth >= broker.minNetWorth &&
     lead.creditScore >= broker.minCredit &&
-    leadMatchesBrokerStatus(lead.status, broker.requiresStatus);
+    leadMatchesBrokerStatus(lead.status, broker.requiresStatus) &&
+    brokerMatchesNetWorthLimiter(broker, lead);
 }
 
 function brokerMatchesIndustry(broker, lead) {

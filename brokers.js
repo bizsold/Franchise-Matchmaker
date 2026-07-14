@@ -487,7 +487,41 @@ async function syncStrippedIndustryExclusions(brokers) {
   return synced;
 }
 
+function normalizeNetWorthLimiter(broker) {
+  const enabled = broker.net_worth_limiter_enabled === true;
+  const raw = Number(broker.net_worth_limiter);
+  const limit = Number.isFinite(raw) && raw > 0 ? raw : null;
+  return {
+    net_worth_limiter_enabled: enabled && limit !== null,
+    net_worth_limiter: enabled && limit !== null ? limit : null
+  };
+}
+
+function setNetWorthLimiterForm(enabled, limit) {
+  const enabledEl = document.getElementById("net-worth-limiter-enabled");
+  const fieldsEl = document.getElementById("net-worth-limiter-fields");
+  const limitEl = document.getElementById("net-worth-limiter");
+  const isEnabled = enabled === true;
+  if (enabledEl) enabledEl.checked = isEnabled;
+  if (fieldsEl) fieldsEl.classList.toggle("hidden", !isEnabled);
+  if (limitEl) {
+    limitEl.value = isEnabled && limit != null ? String(limit) : "";
+    limitEl.required = isEnabled;
+  }
+}
+
+function getNetWorthLimiterFromForm() {
+  const enabled = document.getElementById("net-worth-limiter-enabled")?.checked === true;
+  const raw = Number(document.getElementById("net-worth-limiter")?.value);
+  const limit = Number.isFinite(raw) && raw > 0 ? raw : null;
+  return {
+    net_worth_limiter_enabled: enabled && limit !== null,
+    net_worth_limiter: enabled && limit !== null ? limit : null
+  };
+}
+
 function normalizeBrokerLocation(broker) {
+  const limiter = normalizeNetWorthLimiter(broker);
   const flags = {
     focus_for_date: broker.focus_for_date || null,
     focus_today: broker.focus_today === true,
@@ -496,7 +530,9 @@ function normalizeBrokerLocation(broker) {
     top_priority: broker.top_priority === true,
     assessmentOnly: isAssessmentOnlyBroker(broker),
     industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions),
-    requiresStatus: normalizeRequiresStatus(broker.requiresStatus) || undefined
+    requiresStatus: normalizeRequiresStatus(broker.requiresStatus) || undefined,
+    net_worth_limiter_enabled: limiter.net_worth_limiter_enabled,
+    net_worth_limiter: limiter.net_worth_limiter
   };
   if (broker.location_mode && Array.isArray(broker.location_states)) {
     return { ...broker, ...flags };
@@ -722,6 +758,8 @@ function fillFormForEdit(broker, index) {
   const multiUnitEl = document.getElementById("multi-unit-router");
   if (multiUnitEl) multiUnitEl.checked = broker.multi_unit_router === true;
   setUrgentFormBtnActive(broker.top_priority === true);
+  const limiter = normalizeNetWorthLimiter(broker);
+  setNetWorthLimiterForm(limiter.net_worth_limiter_enabled, limiter.net_worth_limiter);
   renderIndustryExclusionsPicker(broker.industry_exclusions || []);
   locationModeSelect.value = broker.location_mode || "us_wide";
   updateLocationPicker(broker.location_states || []);
@@ -940,9 +978,15 @@ form.addEventListener("submit", async (event) => {
   const multiUnitRouter = document.getElementById("multi-unit-router")?.checked === true;
   const topPriority = document.getElementById("top-priority-btn")?.classList.contains("active") === true;
   const industryExclusions = getSelectedIndustryExclusions();
+  const limiterEnabled = document.getElementById("net-worth-limiter-enabled")?.checked === true;
+  const limiter = getNetWorthLimiterFromForm();
 
   if (!name || !booking) {
     message.textContent = "Please complete all required fields.";
+    return;
+  }
+  if (limiterEnabled && !limiter.net_worth_limiter_enabled) {
+    message.textContent = "Enter a valid Max Net Worth for the Net Worth Limiter (greater than 0).";
     return;
   }
 
@@ -959,7 +1003,9 @@ form.addEventListener("submit", async (event) => {
     booking,
     multi_unit_router: multiUnitRouter,
     top_priority: topPriority,
-    industry_exclusions: industryExclusions
+    industry_exclusions: industryExclusions,
+    net_worth_limiter_enabled: limiter.net_worth_limiter_enabled,
+    net_worth_limiter: limiter.net_worth_limiter
   };
 
   let savedBroker;
@@ -986,6 +1032,7 @@ form.addEventListener("submit", async (event) => {
 
   form.reset();
   setUrgentFormBtnActive(false);
+  setNetWorthLimiterForm(false, null);
   editingIndex = null;
   saveBrokerBtn.textContent = "Add Broker";
   cancelEditBtn.classList.add("hidden");
@@ -1017,6 +1064,7 @@ cancelEditBtn.addEventListener("click", () => {
   editingIndex = null;
   form.reset();
   setUrgentFormBtnActive(false);
+  setNetWorthLimiterForm(false, null);
   saveBrokerBtn.textContent = "Add Broker";
   cancelEditBtn.classList.add("hidden");
   locationModeSelect.value = "us_wide";
@@ -1030,8 +1078,15 @@ document.getElementById("top-priority-btn")?.addEventListener("click", () => {
   setUrgentFormBtnActive(!btn.classList.contains("active"));
 });
 
+document.getElementById("net-worth-limiter-enabled")?.addEventListener("change", (event) => {
+  const enabled = event.currentTarget.checked === true;
+  const currentLimit = document.getElementById("net-worth-limiter")?.value;
+  setNetWorthLimiterForm(enabled, enabled && currentLimit ? Number(currentLimit) : null);
+});
+
 updateLocationPicker([]);
 renderIndustryExclusionsPicker([]);
+setNetWorthLimiterForm(false, null);
 
 saveFocusListBtn.addEventListener("click", async () => {
   snapshotFocusCheckboxesToDraft();
