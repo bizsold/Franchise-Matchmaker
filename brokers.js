@@ -449,7 +449,7 @@ function renderIndustryExclusionsPicker(selected = []) {
   industryExclusionsPicker.innerHTML = INDUSTRY_OPTIONS.map((opt) => `
     <label class="location-option">
       <input type="checkbox" class="industry-exclusion-code" value="${opt.id}" ${selectedSet.has(opt.id) ? "checked" : ""} />
-      ${opt.label}
+      <span>${opt.label}</span>
     </label>
   `).join("");
 }
@@ -693,7 +693,7 @@ function renderPickerOptions(codes, names, selected) {
   return codes.map((code) => `
     <label class="location-option">
       <input type="checkbox" class="location-code" value="${code}" ${selectedSet.has(code) ? "checked" : ""} />
-      ${code} - ${names[code] || code}
+      <span>${code} - ${names[code] || code}</span>
     </label>
   `).join("");
 }
@@ -738,14 +738,6 @@ function getSelectedLocationCodes() {
   return Array.from(document.querySelectorAll(".location-code:checked")).map((node) => node.value);
 }
 
-function setUrgentFormBtnActive(active) {
-  const btn = document.getElementById("top-priority-btn");
-  if (!btn) return;
-  btn.classList.toggle("active", active === true);
-  btn.textContent = active ? "✓ Urgent" : "Urgent";
-  btn.setAttribute("aria-pressed", active ? "true" : "false");
-}
-
 function fillFormForEdit(broker, index) {
   editingIndex = index;
   document.getElementById("broker-name").value = broker.name || "";
@@ -757,7 +749,6 @@ function fillFormForEdit(broker, index) {
   document.getElementById("booking-link").value = broker.booking || "";
   const multiUnitEl = document.getElementById("multi-unit-router");
   if (multiUnitEl) multiUnitEl.checked = broker.multi_unit_router === true;
-  setUrgentFormBtnActive(broker.top_priority === true);
   const limiter = normalizeNetWorthLimiter(broker);
   setNetWorthLimiterForm(limiter.net_worth_limiter_enabled, limiter.net_worth_limiter);
   renderIndustryExclusionsPicker(broker.industry_exclusions || []);
@@ -976,7 +967,6 @@ form.addEventListener("submit", async (event) => {
   const specialRequests = document.getElementById("special-requests").value.trim();
   const booking = document.getElementById("booking-link").value.trim();
   const multiUnitRouter = document.getElementById("multi-unit-router")?.checked === true;
-  const topPriority = document.getElementById("top-priority-btn")?.classList.contains("active") === true;
   const industryExclusions = getSelectedIndustryExclusions();
   const limiterEnabled = document.getElementById("net-worth-limiter-enabled")?.checked === true;
   const limiter = getNetWorthLimiterFromForm();
@@ -991,6 +981,10 @@ form.addEventListener("submit", async (event) => {
   }
 
   const brokers = readBrokers();
+  // Urgent is table-only; keep the existing value when editing, default off for new brokers.
+  const existingTopPriority = editingIndex !== null
+    ? brokers[editingIndex]?.top_priority === true
+    : false;
   const payload = {
     name,
     minLiquid,
@@ -1002,7 +996,7 @@ form.addEventListener("submit", async (event) => {
     specialRequests,
     booking,
     multi_unit_router: multiUnitRouter,
-    top_priority: topPriority,
+    top_priority: existingTopPriority,
     industry_exclusions: industryExclusions,
     net_worth_limiter_enabled: limiter.net_worth_limiter_enabled,
     net_worth_limiter: limiter.net_worth_limiter
@@ -1031,7 +1025,6 @@ form.addEventListener("submit", async (event) => {
   saveBrokers(brokers);
 
   form.reset();
-  setUrgentFormBtnActive(false);
   setNetWorthLimiterForm(false, null);
   editingIndex = null;
   saveBrokerBtn.textContent = "Add Broker";
@@ -1063,7 +1056,6 @@ locationModeSelect.addEventListener("change", () => {
 cancelEditBtn.addEventListener("click", () => {
   editingIndex = null;
   form.reset();
-  setUrgentFormBtnActive(false);
   setNetWorthLimiterForm(false, null);
   saveBrokerBtn.textContent = "Add Broker";
   cancelEditBtn.classList.add("hidden");
@@ -1071,11 +1063,6 @@ cancelEditBtn.addEventListener("click", () => {
   updateLocationPicker([]);
   renderIndustryExclusionsPicker([]);
   message.textContent = "Edit cancelled.";
-});
-
-document.getElementById("top-priority-btn")?.addEventListener("click", () => {
-  const btn = document.getElementById("top-priority-btn");
-  setUrgentFormBtnActive(!btn.classList.contains("active"));
 });
 
 document.getElementById("net-worth-limiter-enabled")?.addEventListener("change", (event) => {
