@@ -1135,8 +1135,8 @@ function runStandardMatching(brokers, candidate, options = {}) {
     multiUnitInterested = wantsMultiUnitOnlyMatching();
     if (multiUnitInterested) {
       if (areAllMultiUnitBrokersBookedToday(brokers, candidate.bookedNames)) {
+        // All multi-unit routers are booked — fall back to regular matching.
         multiUnitGateVoided = true;
-        brokerPool = getFocusListBrokers(brokerPool);
       } else {
         brokerPool = getMultiUnitBrokers(brokerPool);
       }
@@ -1420,14 +1420,11 @@ async function runMatching() {
         el.matchFallbackBanner.classList.remove("hidden");
       }
     } else if (multiUnitInterested && multiUnitGateVoided) {
-      if (!brokerPool.length) {
-        el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today, but no brokers are on today's focus list. Add focus brokers in Brokers admin.";
-        el.matchFallbackBanner.classList.remove("hidden");
-      } else if (!eligibleBrokers.length) {
-        el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today — showing focus list brokers instead, but none match this lead (location, credit, booked today, etc.).";
+      if (!eligibleBrokers.length) {
+        el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today — showing regular matches instead, but none match this lead (location, credit, booked today, etc.).";
         el.matchFallbackBanner.classList.remove("hidden");
       } else {
-        el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today — showing matching focus list brokers instead.";
+        el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today — showing regular matches instead.";
         el.matchFallbackBanner.classList.remove("hidden");
       }
     } else if (multiUnitInterested && !brokerPool.length) {
