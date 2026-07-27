@@ -1105,18 +1105,6 @@ function getMultiUnitBrokers(brokers) {
   return (brokers || []).filter((b) => b.multi_unit_router === true);
 }
 
-/** True when every multi-unit router broker has a booking for today. */
-function areAllMultiUnitBrokersBookedToday(brokers, bookedNames) {
-  const multiUnitBrokers = getMultiUnitBrokers(brokers);
-  if (!multiUnitBrokers.length) return false;
-  const bookedSet = bookedNames instanceof Set ? bookedNames : new Set(bookedNames || []);
-  return multiUnitBrokers.every((b) => bookedSet.has(b.name));
-}
-
-function getFocusListBrokers(brokers) {
-  return (brokers || []).filter((b) => b.focus_today === true);
-}
-
 function getAssessmentOnlyBrokers(brokers) {
   return (brokers || []).filter(isAssessmentOnlyBroker);
 }
@@ -1127,19 +1115,29 @@ function excludeAssessmentOnlyBrokers(brokers) {
 
 function runStandardMatching(brokers, candidate, options = {}) {
   const { allowMultiUnit = true } = options;
-  let brokerPool = excludeAssessmentOnlyBrokers(brokers);
+  const regularPool = excludeAssessmentOnlyBrokers(brokers);
+  let brokerPool = regularPool;
   let multiUnitInterested = false;
   let multiUnitGateVoided = false;
 
   if (allowMultiUnit) {
     multiUnitInterested = wantsMultiUnitOnlyMatching();
     if (multiUnitInterested) {
-      if (areAllMultiUnitBrokersBookedToday(brokers, candidate.bookedNames)) {
-        // All multi-unit routers are booked — fall back to regular matching.
-        multiUnitGateVoided = true;
-      } else {
-        brokerPool = getMultiUnitBrokers(brokerPool);
+      const multiUnitPool = getMultiUnitBrokers(regularPool);
+      // Only unbooked multi-unit brokers — never re-include booked ones.
+      const multiUnitMatches = filterBrokers(multiUnitPool, candidate, false);
+      if (multiUnitMatches.length) {
+        return {
+          eligibleBrokers: multiUnitMatches,
+          bookingFallbackActive: false,
+          multiUnitInterested: true,
+          multiUnitGateVoided: false,
+          brokerPool: multiUnitPool
+        };
       }
+      // No available multi-unit matches (all booked and/or none qualify) — regular matching.
+      multiUnitGateVoided = true;
+      brokerPool = regularPool;
     }
   }
 
@@ -1421,10 +1419,10 @@ async function runMatching() {
       }
     } else if (multiUnitInterested && multiUnitGateVoided) {
       if (!eligibleBrokers.length) {
-        el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today — showing regular matches instead, but none match this lead (location, credit, booked today, etc.).";
+        el.matchFallbackBanner.textContent = "No available multi-unit brokers for today — showing regular matches instead, but none match this lead (location, credit, booked today, etc.).";
         el.matchFallbackBanner.classList.remove("hidden");
       } else {
-        el.matchFallbackBanner.textContent = "All multi-unit brokers are booked for today — showing regular matches instead.";
+        el.matchFallbackBanner.textContent = "No available multi-unit brokers for today — showing regular matches instead.";
         el.matchFallbackBanner.classList.remove("hidden");
       }
     } else if (multiUnitInterested && !brokerPool.length) {
