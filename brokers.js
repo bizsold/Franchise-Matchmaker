@@ -1,6 +1,7 @@
 const BROKER_STORAGE_KEY = "brokers-master-db-v1";
 const BROKER_WINDOW_NAME_PREFIX = "BROKER_DB_SYNC::";
 const FOCUS_DRAFT_KEY = "broker-focus-draft-v1";
+const FOCUS_DRAFT_DIRTY_KEY = "broker-focus-draft-dirty-v1";
 const SUPABASE_URL = "https://ohiholwyaagawjqyocpq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oaWhvbHd5YWFnYXdqcXlvY3BxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMzkyNzMsImV4cCI6MjA5MzgxNTI3M30.qqQmNslJASRxGuR_kpGv6-x05_erZWq52o4yUTL6qDk";
 const REGISTRATION_STATES = ["CA","HI","IL","IN","MD","MI","MN","NY","ND","RI","VA","WA","WI"];
@@ -108,9 +109,27 @@ function writeFocusDraft(draft) {
   }
 }
 
+function isFocusDraftDirty() {
+  try {
+    return sessionStorage.getItem(FOCUS_DRAFT_DIRTY_KEY) === "1";
+  } catch (err) {
+    return false;
+  }
+}
+
+function setFocusDraftDirty(dirty) {
+  try {
+    if (dirty) sessionStorage.setItem(FOCUS_DRAFT_DIRTY_KEY, "1");
+    else sessionStorage.removeItem(FOCUS_DRAFT_DIRTY_KEY);
+  } catch (err) {
+    // Ignore.
+  }
+}
+
 function clearFocusDraft() {
   try {
     sessionStorage.removeItem(FOCUS_DRAFT_KEY);
+    sessionStorage.removeItem(FOCUS_DRAFT_DIRTY_KEY);
   } catch (err) {
     // Ignore.
   }
@@ -127,8 +146,9 @@ function snapshotFocusCheckboxesToDraft() {
   writeFocusDraft(draft);
 }
 
+/** Prefer unsaved local edits only when the user has changed focus checkboxes this session. */
 function resolveFocusToday(brokerName, focusMap, draft) {
-  if (draft && Object.prototype.hasOwnProperty.call(draft, brokerName)) {
+  if (isFocusDraftDirty() && draft && Object.prototype.hasOwnProperty.call(draft, brokerName)) {
     return draft[brokerName] === true;
   }
   if (focusMap) return focusMap.get(brokerName) === true;
@@ -777,7 +797,12 @@ async function renderBrokers() {
 
   sourceBrokers = await syncStrippedIndustryExclusions(sourceBrokers);
 
-  const focusDraft = readFocusDraft();
+  // Drop stale drafts left over from older page sessions so Supabase wins.
+  if (focusMap && !isFocusDraftDirty()) {
+    clearFocusDraft();
+  }
+
+  const focusDraft = isFocusDraftDirty() ? readFocusDraft() : null;
   const rawBrokers = sourceBrokers.map((b) => ({
     ...b,
     hard_locked: lockMap ? (lockMap.get(b.name) === true) : (b.hard_locked === true),
@@ -950,6 +975,7 @@ async function renderBrokers() {
       const name = cb.dataset.brokerFocus;
       if (name) draft[name] = cb.checked;
       writeFocusDraft(draft);
+      setFocusDraftDirty(true);
       updateFocusListTodayFromDom();
     });
   });
@@ -1077,6 +1103,7 @@ setNetWorthLimiterForm(false, null);
 
 saveFocusListBtn.addEventListener("click", async () => {
   snapshotFocusCheckboxesToDraft();
+  setFocusDraftDirty(true);
   const draft = readFocusDraft();
   const brokers = JSON.parse(localStorage.getItem(BROKER_STORAGE_KEY) || "[]");
   brokers.forEach((broker) => {
@@ -1103,23 +1130,25 @@ saveFocusListBtn.addEventListener("click", async () => {
   renderBrokers();
 });
 
-// Refresh roster when another tab updates brokers; keep unsaved focus draft in this tab.
+// Refresh roster when another tab updates brokers.
 window.addEventListener("storage", (event) => {
   if (event.key === BROKER_STORAGE_KEY) {
-    snapshotFocusCheckboxesToDraft();
+    // Keep intentional unsaved edits; otherwise refresh from Supabase/localStorage.
+    if (isFocusDraftDirty()) snapshotFocusCheckboxesToDraft();
+    else clearFocusDraft();
     renderBrokers();
   }
 });
 
 window.addEventListener("focus", () => {
   syncFromWindowName();
-  snapshotFocusCheckboxesToDraft();
+  // Do not snapshot checkboxes here — that locked stale focus lists over Supabase updates.
   renderBrokers();
 });
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
-    snapshotFocusCheckboxesToDraft();
+    if (isFocusDraftDirty()) snapshotFocusCheckboxesToDraft();
     return;
   }
   syncFromWindowName();
@@ -1127,5 +1156,5 @@ document.addEventListener("visibilitychange", () => {
 });
 
 window.addEventListener("pagehide", () => {
-  snapshotFocusCheckboxesToDraft();
+  if (isFocusDraftDirty()) snapshotFocusCheckboxesToDraft();
 });
