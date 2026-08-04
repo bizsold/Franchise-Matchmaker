@@ -39,9 +39,7 @@ Have you looked at specific industries yet, or are you exploring?
 
 Is there a particular reason why now feels like the right time to look at this?`;
 
-const DEFAULT_OPENING_ONLINE_SEARCH_LEADS = `Hey [Name], this is [Your Name] with BizSold. [pause] You had shown interest online in learning about franchise opportunities, so I wanted to give you a quick call to see what kind of businesses you were looking into. Quick question: are you still exploring the idea of owning your own business?
-
-The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.`;
+const DEFAULT_OPENING_ONLINE_SEARCH_LEADS = `Hey [Name], this is [Your Name] with BizSold. [pause] You had shown interest online in learning about franchise opportunities, so I wanted to give you a quick call to see what kind of businesses you were looking into. Quick question: are you still exploring the idea of owning your own business?`;
 
 const DEFAULT_SCRIPT_CONFIG = {
   openingScripts: {
@@ -219,6 +217,12 @@ function normalizeConfig(parsed) {
   }
   if (!parsed.openingScripts.online_search_leads) {
     parsed.openingScripts.online_search_leads = DEFAULT_OPENING_ONLINE_SEARCH_LEADS;
+  } else {
+    // Older full Online Search scripts included the shared "reason I'm calling" block.
+    const online = String(parsed.openingScripts.online_search_leads);
+    if (/shown interest online/i.test(online) && /The reason I['’]m calling/i.test(online)) {
+      parsed.openingScripts.online_search_leads = DEFAULT_OPENING_ONLINE_SEARCH_LEADS;
+    }
   }
   const defaultMq = DEFAULT_SCRIPT_CONFIG.multiUnitQuestion;
   const mq = parsed.multiUnitQuestion && typeof parsed.multiUnitQuestion === "object" ? parsed.multiUnitQuestion : {};

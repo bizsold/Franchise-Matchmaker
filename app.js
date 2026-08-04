@@ -94,6 +94,10 @@ function isTargetedDirectoryGroup(leadType) {
   return leadType === SCRIPT_LEAD_TYPES.targeted_directory_leads;
 }
 
+function isOnlineSearchLeads(leadType) {
+  return leadType === SCRIPT_LEAD_TYPES.online_search_leads;
+}
+
 function isAssessmentLeads(leadType) {
   return leadType === SCRIPT_LEAD_TYPES.assessment_leads;
 }
@@ -273,9 +277,7 @@ Have you looked at specific industries yet, or are you exploring?
 
 Is there a particular reason why now feels like the right time to look at this?`;
 
-const DEFAULT_OPENING_ONLINE_SEARCH_LEADS = `Hey [Name], this is [Your Name] with BizSold. [pause] You had shown interest online in learning about franchise opportunities, so I wanted to give you a quick call to see what kind of businesses you were looking into. Quick question: are you still exploring the idea of owning your own business?
-
-The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.`;
+const DEFAULT_OPENING_ONLINE_SEARCH_LEADS = `Hey [Name], this is [Your Name] with BizSold. [pause] You had shown interest online in learning about franchise opportunities, so I wanted to give you a quick call to see what kind of businesses you were looking into. Quick question: are you still exploring the idea of owning your own business?`;
 
 const DEFAULT_SCRIPT_CONFIG = {
   openingScripts: {
@@ -556,6 +558,12 @@ function normalizeScriptConfig(parsed) {
   }
   if (!parsed.openingScripts.online_search_leads) {
     parsed.openingScripts.online_search_leads = DEFAULT_OPENING_ONLINE_SEARCH_LEADS;
+  } else {
+    // Older full Online Search scripts included the shared "reason I'm calling" block.
+    const online = String(parsed.openingScripts.online_search_leads);
+    if (/shown interest online/i.test(online) && /The reason I['’]m calling/i.test(online)) {
+      parsed.openingScripts.online_search_leads = DEFAULT_OPENING_ONLINE_SEARCH_LEADS;
+    }
   }
   parsed.multiUnitQuestion = normalizeMultiUnitQuestion(parsed.multiUnitQuestion);
   return parsed;
@@ -651,6 +659,7 @@ const el = {
   openingScriptSingle: document.getElementById("opening-script-single"),
   openingScriptDual: document.getElementById("opening-script-dual"),
   openingScript: document.getElementById("opening-script"),
+  openingScriptSingleShared: document.getElementById("opening-script-single-shared"),
   openingScriptTargeted: document.getElementById("opening-script-targeted"),
   openingScriptDirectory: document.getElementById("opening-script-directory"),
   openingScriptShared: document.getElementById("opening-script-shared"),
@@ -1659,11 +1668,18 @@ function updateNextToQualifyingState() {
 function refreshOpeningScriptDisplay() {
   const setterName = el.setterName.value;
   const showDual = isTargetedDirectoryGroup(state.leadType);
+  const showOnlineShared = isOnlineSearchLeads(state.leadType);
+  const sharedRaw = getOpeningScriptText(state.scriptConfig, "targeted_directory_shared");
+  const sharedText = applySetterNameToScript(setterName, sharedRaw);
 
   if (el.scriptLeadTypeLabel) {
-    el.scriptLeadTypeLabel.textContent = showDual
-      ? "Pick the opening that matches this lead, then continue with the shared script below:"
-      : `Opening — ${getOpeningLeadTypeLabel(state.leadType)}`;
+    if (showDual) {
+      el.scriptLeadTypeLabel.textContent = "Pick the opening that matches this lead, then continue with the shared script below:";
+    } else if (showOnlineShared) {
+      el.scriptLeadTypeLabel.textContent = "Opening — Online Search Leads (shared script continues below):";
+    } else {
+      el.scriptLeadTypeLabel.textContent = `Opening — ${getOpeningLeadTypeLabel(state.leadType)}`;
+    }
   }
 
   if (el.openingScriptSingle) el.openingScriptSingle.classList.toggle("hidden", showDual);
@@ -1677,11 +1693,23 @@ function refreshOpeningScriptDisplay() {
       el.openingScriptDirectory.textContent = openingText(setterName, SCRIPT_LEAD_TYPES.directory_leads);
     }
     if (el.openingScriptShared) {
-      const sharedRaw = getOpeningScriptText(state.scriptConfig, "targeted_directory_shared");
-      el.openingScriptShared.textContent = applySetterNameToScript(setterName, sharedRaw);
+      el.openingScriptShared.textContent = sharedText;
+    }
+    if (el.openingScriptSingleShared) {
+      el.openingScriptSingleShared.textContent = "";
+      el.openingScriptSingleShared.classList.add("hidden");
     }
   } else if (el.openingScript) {
     el.openingScript.textContent = openingText(setterName, state.leadType);
+    if (el.openingScriptSingleShared) {
+      if (showOnlineShared) {
+        el.openingScriptSingleShared.textContent = sharedText;
+        el.openingScriptSingleShared.classList.remove("hidden");
+      } else {
+        el.openingScriptSingleShared.textContent = "";
+        el.openingScriptSingleShared.classList.add("hidden");
+      }
+    }
   }
   refreshIndustryInterestButtons();
 }
