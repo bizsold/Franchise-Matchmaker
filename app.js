@@ -84,6 +84,7 @@ const DEFAULT_BROKERS = [
 const SCRIPT_LEAD_TYPES = {
   franchise_show: "franchise_show",
   assessment_leads: "assessment_leads",
+  online_search_leads: "online_search_leads",
   targeted_leads: "targeted_leads",
   directory_leads: "directory_leads",
   targeted_directory_leads: "targeted_directory_leads"
@@ -108,6 +109,7 @@ function getOpeningLeadTypeLabel(leadType) {
   const labels = {
     [SCRIPT_LEAD_TYPES.franchise_show]: "Franchise Show",
     [SCRIPT_LEAD_TYPES.assessment_leads]: "Assessment Leads",
+    [SCRIPT_LEAD_TYPES.online_search_leads]: "Online Search Leads",
     [SCRIPT_LEAD_TYPES.targeted_leads]: "Targeted Leads",
     [SCRIPT_LEAD_TYPES.directory_leads]: "Directory Leads",
     [SCRIPT_LEAD_TYPES.targeted_directory_leads]: "Targeted / Directory Leads"
@@ -271,9 +273,14 @@ Have you looked at specific industries yet, or are you exploring?
 
 Is there a particular reason why now feels like the right time to look at this?`;
 
+const DEFAULT_OPENING_ONLINE_SEARCH_LEADS = `Hey [Name], this is [Your Name] with BizSold. [pause] You had shown interest online in learning about franchise opportunities, so I wanted to give you a quick call to see what kind of businesses you were looking into. Quick question: are you still exploring the idea of owning your own business?
+
+The reason I'm calling is I can connect you with a franchise advisor who can match you with opportunities that fit your goals, save you time, and help avoid costly mistakes. I have a few quick questions to make sure it's a good fit.`;
+
 const DEFAULT_SCRIPT_CONFIG = {
   openingScripts: {
     franchise_show: DEFAULT_OPENING_FRANCHISE_SHOW,
+    online_search_leads: DEFAULT_OPENING_ONLINE_SEARCH_LEADS,
     targeted_leads: DEFAULT_OPENING_TARGETED_LEADS,
     directory_leads: DEFAULT_OPENING_DIRECTORY_LEADS,
     targeted_directory_shared: DEFAULT_OPENING_TARGETED_DIRECTORY_SHARED
@@ -546,6 +553,9 @@ function normalizeScriptConfig(parsed) {
   }
   if (!parsed.openingScripts.targeted_directory_shared) {
     parsed.openingScripts.targeted_directory_shared = DEFAULT_OPENING_TARGETED_DIRECTORY_SHARED;
+  }
+  if (!parsed.openingScripts.online_search_leads) {
+    parsed.openingScripts.online_search_leads = DEFAULT_OPENING_ONLINE_SEARCH_LEADS;
   }
   parsed.multiUnitQuestion = normalizeMultiUnitQuestion(parsed.multiUnitQuestion);
   return parsed;
