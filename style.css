@@ -272,13 +272,15 @@ td a {
 #broker-list {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  padding-bottom: 8px;
 }
 
 #broker-list table {
   font-size: 12px;
   table-layout: fixed;
-  width: 100%;
-  min-width: 1200px;
+  width: 1650px;
+  min-width: 1650px;
 }
 
 #broker-list th,
@@ -434,17 +436,27 @@ td a {
 
 #broker-list th:nth-child(11),
 #broker-list td:nth-child(11) {
-  width: 52px;
-  max-width: 52px;
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
   text-align: center;
   white-space: nowrap;
   vertical-align: middle;
 }
 
+#broker-list .focus-availability-select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 22px 5px 6px;
+  font-size: 12px;
+}
+
 #broker-list th:nth-child(12),
 #broker-list td:nth-child(12) {
-  width: 72px;
-  max-width: 72px;
+  width: 64px;
+  max-width: 64px;
   text-align: center;
   white-space: nowrap;
   vertical-align: middle;
@@ -452,9 +464,9 @@ td a {
 
 #broker-list th:nth-child(13),
 #broker-list td:nth-child(13) {
-  width: 96px;
-  max-width: 96px;
-  min-width: 96px;
+  width: 82px;
+  max-width: 82px;
+  min-width: 82px;
   text-align: center;
   white-space: nowrap;
   vertical-align: middle;
@@ -467,16 +479,16 @@ td a {
 
 #broker-list th:nth-child(14),
 #broker-list td:nth-child(14) {
-  width: 108px;
-  max-width: 108px;
+  width: 100px;
+  max-width: 100px;
   white-space: nowrap;
   vertical-align: middle;
 }
 
 #broker-list th:nth-child(15),
 #broker-list td:nth-child(15) {
-  width: 132px;
-  max-width: 132px;
+  width: 116px;
+  max-width: 116px;
   white-space: nowrap;
   vertical-align: middle;
 }
@@ -661,7 +673,7 @@ td a {
 }
 
 #tier-top,
-#tier1,
+:is(#tier-morning, #tier-afternoon),
 #tier2 {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -669,8 +681,8 @@ td a {
 
 #tier-top td:first-child,
 #tier-top th:first-child,
-#tier1 td:first-child,
-#tier1 th:first-child,
+:is(#tier-morning, #tier-afternoon) td:first-child,
+:is(#tier-morning, #tier-afternoon) th:first-child,
 #tier2 td:first-child,
 #tier2 th:first-child {
   white-space: nowrap;
@@ -681,8 +693,8 @@ td a {
 /* Min Liquid, Min Net Worth — slightly narrower; values may ellipsize if huge */
 #tier-top td:nth-child(2),
 #tier-top td:nth-child(3),
-#tier1 td:nth-child(2),
-#tier1 td:nth-child(3),
+:is(#tier-morning, #tier-afternoon) td:nth-child(2),
+:is(#tier-morning, #tier-afternoon) td:nth-child(3),
 #tier2 td:nth-child(2),
 #tier2 td:nth-child(3) {
   max-width: 100px;
@@ -695,8 +707,8 @@ td a {
 
 #tier-top th:nth-child(2),
 #tier-top th:nth-child(3),
-#tier1 th:nth-child(2),
-#tier1 th:nth-child(3),
+:is(#tier-morning, #tier-afternoon) th:nth-child(2),
+:is(#tier-morning, #tier-afternoon) th:nth-child(3),
 #tier2 th:nth-child(2),
 #tier2 th:nth-child(3) {
   max-width: 100px;
@@ -709,7 +721,7 @@ td a {
 
 /* Credit — slightly narrower */
 #tier-top td:nth-child(4),
-#tier1 td:nth-child(4),
+:is(#tier-morning, #tier-afternoon) td:nth-child(4),
 #tier2 td:nth-child(4) {
   max-width: 68px;
   width: 68px;
@@ -720,7 +732,7 @@ td a {
 }
 
 #tier-top th:nth-child(4),
-#tier1 th:nth-child(4),
+:is(#tier-morning, #tier-afternoon) th:nth-child(4),
 #tier2 th:nth-child(4) {
   max-width: 68px;
   width: 68px;
@@ -732,8 +744,8 @@ td a {
 
 #tier-top td:nth-child(5),
 #tier-top th:nth-child(5),
-#tier1 td:nth-child(5),
-#tier1 th:nth-child(5),
+:is(#tier-morning, #tier-afternoon) td:nth-child(5),
+:is(#tier-morning, #tier-afternoon) th:nth-child(5),
 #tier2 td:nth-child(5),
 #tier2 th:nth-child(5) {
   max-width: 320px;
@@ -745,7 +757,7 @@ td a {
 }
 
 #tier-top td:last-child,
-#tier1 td:last-child,
+:is(#tier-morning, #tier-afternoon) td:last-child,
 #tier2 td:last-child {
   white-space: nowrap;
   width: 1%;

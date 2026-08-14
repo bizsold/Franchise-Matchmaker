@@ -135,33 +135,43 @@ function clearFocusDraft() {
   }
 }
 
-function snapshotFocusCheckboxesToDraft() {
-  const checkboxes = document.querySelectorAll(".focus-today-checkbox");
-  if (!checkboxes.length) return;
+function normalizeFocusAvailability(value, focusToday = false) {
+  if (value === "morning" || value === "afternoon") return value;
+  return focusToday === true ? "morning" : "";
+}
+
+function snapshotFocusSelectsToDraft() {
+  const selects = document.querySelectorAll(".focus-availability-select");
+  if (!selects.length) return;
   const draft = readFocusDraft() || {};
-  checkboxes.forEach((cb) => {
-    const name = cb.dataset.brokerFocus;
-    if (name) draft[name] = cb.checked;
+  selects.forEach((select) => {
+    const name = select.dataset.brokerFocus;
+    if (name) draft[name] = select.value;
   });
   writeFocusDraft(draft);
 }
 
-/** Prefer unsaved local edits only when the user has changed focus checkboxes this session. */
-function resolveFocusToday(brokerName, focusMap, draft) {
+/** Prefer unsaved local edits only when the user has changed focus availability this session. */
+function resolveFocusAvailability(broker, focusMap, draft) {
+  const brokerName = broker.name;
   if (isFocusDraftDirty() && draft && Object.prototype.hasOwnProperty.call(draft, brokerName)) {
-    return draft[brokerName] === true;
+    return normalizeFocusAvailability(draft[brokerName]);
   }
-  if (focusMap) return focusMap.get(brokerName) === true;
-  return false;
+  const focusToday = focusMap ? focusMap.get(brokerName) === true : broker.focus_today === true;
+  return normalizeFocusAvailability(broker.focus_availability, focusToday);
 }
 
 function updateFocusListTodayFromDom() {
-  const names = [];
-  document.querySelectorAll(".focus-today-checkbox:checked").forEach((cb) => {
-    if (cb.dataset.brokerFocus) names.push(cb.dataset.brokerFocus);
+  const groups = { morning: [], afternoon: [] };
+  document.querySelectorAll(".focus-availability-select").forEach((select) => {
+    if (groups[select.value] && select.dataset.brokerFocus) groups[select.value].push(select.dataset.brokerFocus);
   });
-  focusListToday.innerHTML = names.length
-    ? names.join(", ")
+  const sections = [
+    groups.morning.length ? `<strong>Morning Available:</strong> ${groups.morning.join(", ")}` : "",
+    groups.afternoon.length ? `<strong>Afternoon Available:</strong> ${groups.afternoon.join(", ")}` : ""
+  ].filter(Boolean);
+  focusListToday.innerHTML = sections.length
+    ? sections.join("<br>")
     : "<span class=\"subtitle\">No brokers selected for focus today.</span>";
 }
 
@@ -545,6 +555,7 @@ function normalizeBrokerLocation(broker) {
   const flags = {
     focus_for_date: broker.focus_for_date || null,
     focus_today: broker.focus_today === true,
+    focus_availability: normalizeFocusAvailability(broker.focus_availability, broker.focus_today === true),
     hard_locked: broker.hard_locked === true,
     multi_unit_router: broker.multi_unit_router === true,
     top_priority: broker.top_priority === true,
@@ -589,7 +600,10 @@ function mergeFocusTodayFromStorage(incomingBrokers) {
     const current = existingByName.get(broker.name);
     return {
       ...broker,
-      focus_today: current ? current.focus_today === true : broker.focus_today === true
+      focus_today: current ? current.focus_today === true : broker.focus_today === true,
+      focus_availability: current
+        ? normalizeFocusAvailability(current.focus_availability, current.focus_today === true)
+        : normalizeFocusAvailability(broker.focus_availability, broker.focus_today === true)
     };
   });
 }
@@ -806,7 +820,8 @@ async function renderBrokers() {
   const rawBrokers = sourceBrokers.map((b) => ({
     ...b,
     hard_locked: lockMap ? (lockMap.get(b.name) === true) : (b.hard_locked === true),
-    focus_today: resolveFocusToday(b.name, focusMap, focusDraft)
+    focus_availability: resolveFocusAvailability(b, focusMap, focusDraft),
+    focus_today: Boolean(resolveFocusAvailability(b, focusMap, focusDraft))
   }));
   const brokers = rawBrokers
     .map((broker, originalIndex) => ({ broker, originalIndex }))
@@ -818,10 +833,15 @@ async function renderBrokers() {
     return;
   }
 
-  const focusedNames = brokers
-    .filter(({ broker }) => broker.focus_today === true)
-    .map(({ broker }) => broker.name);
-  focusListToday.innerHTML = focusedNames.length ? focusedNames.join(", ") : "<span class=\"subtitle\">No brokers selected for focus today.</span>";
+  const focusedGroups = { morning: [], afternoon: [] };
+  brokers.forEach(({ broker }) => {
+    if (focusedGroups[broker.focus_availability]) focusedGroups[broker.focus_availability].push(broker.name);
+  });
+  const focusSections = [
+    focusedGroups.morning.length ? `<strong>Morning Available:</strong> ${focusedGroups.morning.join(", ")}` : "",
+    focusedGroups.afternoon.length ? `<strong>Afternoon Available:</strong> ${focusedGroups.afternoon.join(", ")}` : ""
+  ].filter(Boolean);
+  focusListToday.innerHTML = focusSections.length ? focusSections.join("<br>") : "<span class=\"subtitle\">No brokers selected for focus today.</span>";
 
   const rows = brokers.map(({ broker, originalIndex }) => {
     const locked = broker.hard_locked === true;
@@ -845,7 +865,13 @@ async function renderBrokers() {
         <td>${broker.specialRequests || ""}</td>
         <td>${getIndustryExclusionLabels(broker.industry_exclusions)}</td>
         <td class="broker-link-cell">${bookingUrl ? `<a href="${escapeAttr(bookingUrl)}" target="_blank" rel="noopener noreferrer" title="${escapeAttr(bookingUrl)}">Link</a>` : "-"}</td>
-        <td><input class="focus-today-checkbox" type="checkbox" data-index="${originalIndex}" data-broker-focus="${broker.name}" ${broker.focus_today === true ? "checked" : ""} /></td>
+        <td>
+          <select class="focus-availability-select" data-index="${originalIndex}" data-broker-focus="${escapeAttr(broker.name || "")}" aria-label="Focus availability for ${escapeAttr(broker.name || "")}">
+            <option value="" ${!broker.focus_availability ? "selected" : ""}></option>
+            <option value="morning" ${broker.focus_availability === "morning" ? "selected" : ""}>Morning</option>
+            <option value="afternoon" ${broker.focus_availability === "afternoon" ? "selected" : ""}>Afternoon</option>
+          </select>
+        </td>
         <td><input class="multi-unit-checkbox" type="checkbox" data-broker-name="${escapeAttr(broker.name || "")}" title="Multi-unit lead router" ${broker.multi_unit_router === true ? "checked" : ""} /></td>
         <td><button type="button" class="urgent-btn${urgent ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Urgent: show above focus list when matched">${urgent ? "✓ Urgent" : "Urgent"}</button></td>
         <td><button type="button" class="hard-lock-btn${locked ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Hard lock: exclude from all matching">${locked ? "🔒 Locked" : "🔒 Hard Lock"}</button></td>
@@ -969,11 +995,11 @@ async function renderBrokers() {
     });
   });
 
-  document.querySelectorAll(".focus-today-checkbox").forEach((cb) => {
-    cb.addEventListener("change", () => {
+  document.querySelectorAll(".focus-availability-select").forEach((select) => {
+    select.addEventListener("change", () => {
       const draft = readFocusDraft() || {};
-      const name = cb.dataset.brokerFocus;
-      if (name) draft[name] = cb.checked;
+      const name = select.dataset.brokerFocus;
+      if (name) draft[name] = select.value;
       writeFocusDraft(draft);
       setFocusDraftDirty(true);
       updateFocusListTodayFromDom();
@@ -1102,30 +1128,34 @@ renderIndustryExclusionsPicker([]);
 setNetWorthLimiterForm(false, null);
 
 saveFocusListBtn.addEventListener("click", async () => {
-  snapshotFocusCheckboxesToDraft();
+  snapshotFocusSelectsToDraft();
   setFocusDraftDirty(true);
   const draft = readFocusDraft();
   const brokers = JSON.parse(localStorage.getItem(BROKER_STORAGE_KEY) || "[]");
   brokers.forEach((broker) => {
     if (draft && Object.prototype.hasOwnProperty.call(draft, broker.name)) {
-      broker.focus_today = draft[broker.name] === true;
+      broker.focus_availability = normalizeFocusAvailability(draft[broker.name]);
+      broker.focus_today = Boolean(broker.focus_availability);
       return;
     }
-    const checkbox = document.querySelector(`[data-broker-focus="${broker.name}"]`);
-    if (checkbox) {
-      broker.focus_today = checkbox.checked;
+    const select = Array.from(document.querySelectorAll(".focus-availability-select")).find((item) => item.dataset.brokerFocus === broker.name);
+    if (select) {
+      broker.focus_availability = normalizeFocusAvailability(select.value);
+      broker.focus_today = Boolean(broker.focus_availability);
     }
   });
 
   localStorage.setItem(BROKER_STORAGE_KEY, JSON.stringify(brokers));
 
   const result = await persistBrokerFocusToSupabase(brokers);
+  const brokerResults = await Promise.all(brokers.map(upsertBrokerToSupabase));
+  const brokerSyncOk = brokerResults.every((item) => item?.ok !== false);
 
-  if (!result.ok) {
-    alert("Focus list saved locally, but could not sync to Supabase. Check your network or that the broker_focus table exists.");
+  if (!result.ok || !brokerSyncOk) {
+    alert("Focus availability saved locally, but could not fully sync to Supabase. Check your network and Supabase tables.");
   } else {
     clearFocusDraft();
-    alert("Focus list saved successfully.");
+    alert("Focus availability saved successfully.");
   }
   renderBrokers();
 });
@@ -1134,7 +1164,7 @@ saveFocusListBtn.addEventListener("click", async () => {
 window.addEventListener("storage", (event) => {
   if (event.key === BROKER_STORAGE_KEY) {
     // Keep intentional unsaved edits; otherwise refresh from Supabase/localStorage.
-    if (isFocusDraftDirty()) snapshotFocusCheckboxesToDraft();
+    if (isFocusDraftDirty()) snapshotFocusSelectsToDraft();
     else clearFocusDraft();
     renderBrokers();
   }
@@ -1148,7 +1178,7 @@ window.addEventListener("focus", () => {
 
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
-    if (isFocusDraftDirty()) snapshotFocusCheckboxesToDraft();
+    if (isFocusDraftDirty()) snapshotFocusSelectsToDraft();
     return;
   }
   syncFromWindowName();
@@ -1156,5 +1186,5 @@ document.addEventListener("visibilitychange", () => {
 });
 
 window.addEventListener("pagehide", () => {
-  if (isFocusDraftDirty()) snapshotFocusCheckboxesToDraft();
+  if (isFocusDraftDirty()) snapshotFocusSelectsToDraft();
 });

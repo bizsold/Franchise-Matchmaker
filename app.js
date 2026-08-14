@@ -6,6 +6,11 @@ const BROKER_WINDOW_NAME_PREFIX = "BROKER_DB_SYNC::";
 const SCRIPT_STORAGE_KEY = "matchmaker-script-config-v1";
 const SCRIPT_WINDOW_NAME_PREFIX = "SCRIPT_CFG_SYNC::";
 
+function normalizeFocusAvailability(value, focusToday = false) {
+  if (value === "morning" || value === "afternoon") return value;
+  return focusToday === true ? "morning" : "";
+}
+
 function createSupabaseClient() {
   if (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase?.createClient) {
     return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -386,6 +391,7 @@ function normalizeBrokerLocation(broker) {
   const flags = {
     focus_for_date: broker.focus_for_date || null,
     focus_today: broker.focus_today === true,
+    focus_availability: normalizeFocusAvailability(broker.focus_availability, broker.focus_today === true),
     hard_locked: broker.hard_locked === true,
     multi_unit_router: broker.multi_unit_router === true,
     top_priority: broker.top_priority === true,
@@ -431,7 +437,10 @@ function mergeFocusTodayFromStorage(incomingBrokers) {
     const existingBroker = existingByName.get(broker.name);
     return {
       ...broker,
-      focus_today: existingBroker ? existingBroker.focus_today === true : broker.focus_today === true
+      focus_today: existingBroker ? existingBroker.focus_today === true : broker.focus_today === true,
+      focus_availability: existingBroker
+        ? normalizeFocusAvailability(existingBroker.focus_availability, existingBroker.focus_today === true)
+        : normalizeFocusAvailability(broker.focus_availability, broker.focus_today === true)
     };
   });
 }
@@ -674,7 +683,8 @@ const el = {
   matchFallbackBanner: document.getElementById("match-fallback-banner"),
   tierTop: document.getElementById("tier-top"),
   tierTopHeading: document.getElementById("tier-top-heading"),
-  tier1: document.getElementById("tier1"),
+  tierMorning: document.getElementById("tier-morning"),
+  tierAfternoon: document.getElementById("tier-afternoon"),
   tier2: document.getElementById("tier2"),
   postMatchContent: document.getElementById("post-match-content"),
   restartSession: document.getElementById("restart-session"),
@@ -1341,7 +1351,14 @@ async function refreshLiveState() {
   // Overlay focus + hard-lock state from their dedicated tables.
   const focusMap = state.db ? await state.db.fetchBrokerFocusMap() : null;
   if (focusMap) {
-    state.brokers = state.brokers.map((b) => ({ ...b, focus_today: focusMap.get(b.name) === true }));
+    state.brokers = state.brokers.map((b) => {
+      const focusToday = focusMap.get(b.name) === true;
+      return {
+        ...b,
+        focus_today: focusToday,
+        focus_availability: normalizeFocusAvailability(b.focus_availability, focusToday)
+      };
+    });
   }
   const lockMap = state.db ? await state.db.fetchBrokerLocksMap() : null;
   if (lockMap) {
@@ -1459,11 +1476,11 @@ async function runMatching() {
     }
   }
 
-  const FOCUS_LIST = state.brokers.filter(b => b.focus_today === true).map(b => b.name);
   const TOP_PRIORITY_LIST = state.brokers.filter(b => b.top_priority === true).map(b => b.name);
   const tierTop = eligibleBrokers.filter(b => TOP_PRIORITY_LIST.includes(b.name));
-  const tier1 = eligibleBrokers.filter(b => FOCUS_LIST.includes(b.name) && !TOP_PRIORITY_LIST.includes(b.name));
-  const tier2 = eligibleBrokers.filter(b => !FOCUS_LIST.includes(b.name) && !TOP_PRIORITY_LIST.includes(b.name));
+  const tierMorning = eligibleBrokers.filter(b => b.focus_today === true && b.focus_availability === "morning" && !TOP_PRIORITY_LIST.includes(b.name));
+  const tierAfternoon = eligibleBrokers.filter(b => b.focus_today === true && b.focus_availability === "afternoon" && !TOP_PRIORITY_LIST.includes(b.name));
+  const tier2 = eligibleBrokers.filter(b => b.focus_today !== true && !TOP_PRIORITY_LIST.includes(b.name));
 
   const multiUnitRow = !assessmentLead && meetsMultiUnitThresholds()
     ? `<tr><th>Multi-Unit Interest</th><td>${state.answers[MULTI_UNIT_ANSWER_ID] === true ? "Yes" : state.answers[MULTI_UNIT_ANSWER_ID] === false ? "No" : "—"}</td></tr>`
@@ -1483,7 +1500,8 @@ async function runMatching() {
   `;
   if (el.tierTopHeading) el.tierTopHeading.classList.toggle("hidden", !tierTop.length);
   if (el.tierTop) el.tierTop.innerHTML = tierTop.length ? renderTable(tierTop) : "";
-  el.tier1.innerHTML = tier1.length ? renderTable(tier1) : "";
+  el.tierMorning.innerHTML = tierMorning.length ? renderTable(tierMorning) : "";
+  el.tierAfternoon.innerHTML = tierAfternoon.length ? renderTable(tierAfternoon) : "";
   el.tier2.innerHTML = tier2.length ? renderTable(tier2) : "";
   el.postMatchContent.innerHTML = `
     ${!eligibleBrokers.length ? `<p><strong>No matches found.</strong></p>` : ""}
@@ -1744,7 +1762,8 @@ function resetSession() {
   }
   if (el.tierTop) el.tierTop.innerHTML = "";
   if (el.tierTopHeading) el.tierTopHeading.classList.add("hidden");
-  el.tier1.innerHTML = "";
+  el.tierMorning.innerHTML = "";
+  el.tierAfternoon.innerHTML = "";
   el.tier2.innerHTML = "";
   el.postMatchContent.innerHTML = "";
   if (el.confirmationPanel) {
