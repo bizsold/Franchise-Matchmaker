@@ -31,7 +31,7 @@ const ALL_US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","H
 
 const STATE_MAP = {
   alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
-  colorado: "CO", delaware: "DE", florida: "FL", georgia: "GA", hawaii: "HI",
+  colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA", hawaii: "HI",
   idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA", kansas: "KS",
   kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD", massachusetts: "MA",
   michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO", montana: "MT",
@@ -39,7 +39,7 @@ const STATE_MAP = {
   "new york": "NY", "north carolina": "NC", "north dakota": "ND", ohio: "OH", oklahoma: "OK",
   oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC", "south dakota": "SD",
   tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT", virginia: "VA",
-  washington: "WA", wisconsin: "WI", wyoming: "WY", "district of columbia": "DC"
+  washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY", "district of columbia": "DC"
 };
 
 const CANADIAN_PROVINCE_MAP = {
@@ -908,6 +908,22 @@ function normalizeState(input) {
   return STATE_MAP[raw] || CANADIAN_PROVINCE_MAP[raw] || "";
 }
 
+function getUsStateName(code) {
+  const name = Object.keys(STATE_MAP).find((key) => STATE_MAP[key] === code);
+  return name ? name.replace(/\b\w/g, (letter) => letter.toUpperCase()) : code;
+}
+
+function getLocationRegionOptions(country, selectedValue = "") {
+  const selectedCode = normalizeState(selectedValue);
+  const regions = country === "Canada" ? ALL_CANADIAN_PROVINCES : ALL_US_STATES;
+  const placeholder = country === "Canada" ? "Select a province or territory" : "Select a state";
+  const options = regions.map((code) => {
+    const label = country === "Canada" ? CANADIAN_PROVINCE_NAMES[code] : getUsStateName(code);
+    return `<option value="${code}" ${selectedCode === code ? "selected" : ""}>${label} (${code})</option>`;
+  }).join("");
+  return `<option value="">${placeholder}</option>${options}`;
+}
+
 function getTimezone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
@@ -1297,14 +1313,17 @@ function renderQuestion() {
         <span>K</span>
       </div>`;
   } else {
+    const selectedCountry = state.answers.country === "Canada" ? "Canada" : "USA";
     html += `
       <div class="row"><label>City</label><input id="city" value="${state.answers.city || ""}" placeholder="City" /></div>
-      <div class="row"><label>State/Province</label><input id="lead-state" value="${state.answers.stateInput || ""}" placeholder="Ex: Florida or FL" /></div>
       <div class="row"><label>Country</label>
         <select id="country">
-          <option ${state.answers.country === "USA" ? "selected" : ""}>USA</option>
-          <option ${state.answers.country === "Canada" ? "selected" : ""}>Canada</option>
+          <option ${selectedCountry === "USA" ? "selected" : ""}>USA</option>
+          <option ${selectedCountry === "Canada" ? "selected" : ""}>Canada</option>
         </select>
+      </div>
+      <div class="row"><label id="lead-region-label">${selectedCountry === "Canada" ? "Province/Territory" : "State"}</label>
+        <select id="lead-state">${getLocationRegionOptions(selectedCountry, state.answers.stateInput || "")}</select>
       </div>`;
   }
   el.questionContainer.innerHTML = html;
@@ -1321,6 +1340,16 @@ function renderQuestion() {
       renderQuestion();
     });
   });
+  const countrySelect = document.getElementById("country");
+  const regionSelect = document.getElementById("lead-state");
+  if (countrySelect && regionSelect) {
+    countrySelect.addEventListener("change", () => {
+      const country = countrySelect.value;
+      regionSelect.innerHTML = getLocationRegionOptions(country);
+      const regionLabel = document.getElementById("lead-region-label");
+      if (regionLabel) regionLabel.textContent = country === "Canada" ? "Province/Territory" : "State";
+    });
+  }
 }
 
 function renderTable(matches) {
