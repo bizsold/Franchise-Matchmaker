@@ -52,6 +52,11 @@
               <input id="multi-unit-router" type="checkbox" />
               <span>Multi Unit router</span>
             </label>
+            <label class="checkbox-label" for="bypass-daily-limit">
+              <input id="bypass-daily-limit" type="checkbox" />
+              <span>Bypass Daily Limit</span>
+            </label>
+            <p class="subtitle">When enabled, this broker can still appear in matching results after being booked that day.</p>
             <label class="checkbox-label" for="net-worth-limiter-enabled">
               <input id="net-worth-limiter-enabled" type="checkbox" />
               <span>Net Worth Limiter</span>
@@ -72,7 +77,7 @@
 
       <section class="panel">
         <h2>Current Brokers (<span id="broker-count">0</span>)</h2>
-        <p class="subtitle">Urgent brokers appear first when they match. Available focus brokers are grouped into Morning Available and Afternoon Available. If a focus broker is booked today, they are excluded from today's results.</p>
+        <p class="subtitle">Urgent brokers appear first when they match. Available focus brokers are grouped into Morning Available and Afternoon Available. Brokers booked today are excluded unless Bypass Daily Limit is enabled.</p>
         <div class="row stack">
           <label>Today's Focus List (EST)</label>
           <div id="focus-list-today"></div>

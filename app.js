@@ -394,6 +394,7 @@ function normalizeBrokerLocation(broker) {
     focus_availability: normalizeFocusAvailability(broker.focus_availability, broker.focus_today === true),
     hard_locked: broker.hard_locked === true,
     multi_unit_router: broker.multi_unit_router === true,
+    bypass_daily_limit: broker.bypass_daily_limit === true,
     top_priority: broker.top_priority === true,
     assessmentOnly: isAssessmentOnlyBroker(broker),
     industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions),
@@ -1169,7 +1170,7 @@ function runStandardMatching(brokers, candidate, options = {}) {
     multiUnitInterested = wantsMultiUnitOnlyMatching();
     if (multiUnitInterested) {
       const multiUnitPool = getMultiUnitBrokers(regularPool);
-      // Only unbooked multi-unit brokers — never re-include booked ones.
+      // Booked multi-unit brokers remain eligible only when they bypass the daily limit.
       const multiUnitMatches = filterBrokers(multiUnitPool, candidate, false);
       if (multiUnitMatches.length) {
         return {
@@ -1246,7 +1247,7 @@ function filterBrokers(brokers, candidate, ignoreBookingExclusion, options = {})
   pool = pool.filter((b) => isFinancialMatch(b, lead) && matchesLocation(b, lead.state, lead.country) && brokerMatchesIndustry(b, lead));
   pool.sort((a, b) => getScore(a, lead) - getScore(b, lead));
   if (!ignoreBookingExclusion) {
-    pool = pool.filter((b) => !bookedSet.has(b.name));
+    pool = pool.filter((b) => b.bypass_daily_limit === true || !bookedSet.has(b.name));
   }
   return pool;
 }
@@ -1356,7 +1357,7 @@ function renderTable(matches) {
   if (!matches.length) return "<p>No matches.</p>";
   const rows = matches.map((b) => `
     <tr>
-      <td>${b.name}</td>
+      <td>${escapeHTML(b.name)}${b.booked_today ? '<span class="match-booked-today-badge">Previously booked today</span>' : ''}</td>
       <td>$${b.minLiquid.toLocaleString()}</td>
       <td>$${b.minNetWorth.toLocaleString()}</td>
       <td>${b.minCredit}+</td>
@@ -1506,6 +1507,10 @@ async function runMatching() {
   }
 
   const TOP_PRIORITY_LIST = state.brokers.filter(b => b.top_priority === true).map(b => b.name);
+  eligibleBrokers = eligibleBrokers.map((broker) => ({
+    ...broker,
+    booked_today: bookedNames.has(broker.name)
+  }));
   const tierTop = eligibleBrokers.filter(b => TOP_PRIORITY_LIST.includes(b.name));
   const tierMorning = eligibleBrokers.filter(b => b.focus_today === true && b.focus_availability === "morning" && !TOP_PRIORITY_LIST.includes(b.name));
   const tierAfternoon = eligibleBrokers.filter(b => b.focus_today === true && b.focus_availability === "afternoon" && !TOP_PRIORITY_LIST.includes(b.name));

@@ -279,8 +279,8 @@ td a {
 #broker-list table {
   font-size: 12px;
   table-layout: fixed;
-  width: 1650px;
-  min-width: 1650px;
+  width: 1730px;
+  min-width: 1730px;
 }
 
 #broker-list th,
@@ -464,6 +464,16 @@ td a {
 
 #broker-list th:nth-child(13),
 #broker-list td:nth-child(13) {
+  width: 86px;
+  max-width: 86px;
+  min-width: 86px;
+  text-align: center;
+  white-space: normal;
+  vertical-align: middle;
+}
+
+#broker-list th:nth-child(14),
+#broker-list td:nth-child(14) {
   width: 82px;
   max-width: 82px;
   min-width: 82px;
@@ -472,29 +482,30 @@ td a {
   vertical-align: middle;
 }
 
-#broker-list th:nth-child(13) {
+#broker-list th:nth-child(13),
+#broker-list th:nth-child(14) {
   font-size: 11px;
   line-height: 1.2;
 }
 
-#broker-list th:nth-child(14),
-#broker-list td:nth-child(14) {
+#broker-list th:nth-child(15),
+#broker-list td:nth-child(15) {
   width: 100px;
   max-width: 100px;
   white-space: nowrap;
   vertical-align: middle;
 }
 
-#broker-list th:nth-child(15),
-#broker-list td:nth-child(15) {
+#broker-list th:nth-child(16),
+#broker-list td:nth-child(16) {
   width: 116px;
   max-width: 116px;
   white-space: nowrap;
   vertical-align: middle;
 }
 
-#broker-list th:nth-child(16),
-#broker-list td:nth-child(16) {
+#broker-list th:nth-child(17),
+#broker-list td:nth-child(17) {
   width: 44px;
   max-width: 44px;
   text-align: center;
@@ -502,8 +513,8 @@ td a {
   vertical-align: middle;
 }
 
-#broker-list th:nth-child(17),
-#broker-list td:nth-child(17) {
+#broker-list th:nth-child(18),
+#broker-list td:nth-child(18) {
   width: 36px;
   max-width: 36px;
   text-align: center;
@@ -511,6 +522,21 @@ td a {
   vertical-align: middle;
   padding-left: 4px;
   padding-right: 4px;
+}
+
+.match-booked-today-badge {
+  display: block;
+  width: fit-content;
+  margin-top: 4px;
+  padding: 2px 7px;
+  border: 1px solid #ea580c;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 
 #broker-list .broker-delete-btn {

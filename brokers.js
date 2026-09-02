@@ -436,6 +436,24 @@ async function setBrokerMultiUnitRouterInSupabase(brokerName, enabled) {
   return result.ok;
 }
 
+async function setBrokerBypassDailyLimitInSupabase(brokerName, enabled) {
+  const supabaseBrokers = await fetchBrokersFromSupabase();
+  const brokers = supabaseBrokers?.length ? supabaseBrokers : readBrokers();
+  const broker = brokers.find((b) => b.name === brokerName);
+  if (!broker) return false;
+  const updated = { ...broker, bypass_daily_limit: enabled === true };
+  const result = await upsertBrokerToSupabase(updated);
+  if (result.ok) {
+    const local = readBrokers();
+    const idx = local.findIndex((b) => b.name === brokerName);
+    if (idx >= 0) {
+      local[idx] = { ...local[idx], bypass_daily_limit: enabled === true };
+      saveBrokers(local);
+    }
+  }
+  return result.ok;
+}
+
 async function setBrokerTopPriorityInSupabase(brokerName, enabled) {
   const supabaseBrokers = await fetchBrokersFromSupabase();
   const brokers = supabaseBrokers?.length ? supabaseBrokers : readBrokers();
@@ -558,6 +576,7 @@ function normalizeBrokerLocation(broker) {
     focus_availability: normalizeFocusAvailability(broker.focus_availability, broker.focus_today === true),
     hard_locked: broker.hard_locked === true,
     multi_unit_router: broker.multi_unit_router === true,
+    bypass_daily_limit: broker.bypass_daily_limit === true,
     top_priority: broker.top_priority === true,
     assessmentOnly: isAssessmentOnlyBroker(broker),
     industry_exclusions: normalizeIndustryExclusions(broker.industry_exclusions),
@@ -783,6 +802,8 @@ function fillFormForEdit(broker, index) {
   document.getElementById("booking-link").value = broker.booking || "";
   const multiUnitEl = document.getElementById("multi-unit-router");
   if (multiUnitEl) multiUnitEl.checked = broker.multi_unit_router === true;
+  const bypassDailyLimitEl = document.getElementById("bypass-daily-limit");
+  if (bypassDailyLimitEl) bypassDailyLimitEl.checked = broker.bypass_daily_limit === true;
   const limiter = normalizeNetWorthLimiter(broker);
   setNetWorthLimiterForm(limiter.net_worth_limiter_enabled, limiter.net_worth_limiter);
   renderIndustryExclusionsPicker(broker.industry_exclusions || []);
@@ -873,6 +894,7 @@ async function renderBrokers() {
           </select>
         </td>
         <td><input class="multi-unit-checkbox" type="checkbox" data-broker-name="${escapeAttr(broker.name || "")}" title="Multi-unit lead router" ${broker.multi_unit_router === true ? "checked" : ""} /></td>
+        <td><input class="bypass-daily-limit-checkbox" type="checkbox" data-broker-name="${escapeAttr(broker.name || "")}" title="Continue showing this broker after they are booked today" ${broker.bypass_daily_limit === true ? "checked" : ""} /></td>
         <td><button type="button" class="urgent-btn${urgent ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Urgent: show above focus list when matched">${urgent ? "✓ Urgent" : "Urgent"}</button></td>
         <td><button type="button" class="hard-lock-btn${locked ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Hard lock: exclude from all matching">${locked ? "🔒 Locked" : "🔒 Hard Lock"}</button></td>
         <td><button type="button" class="booked-today-btn${bookedToday ? " active" : ""}" data-broker-name="${escapeAttr(broker.name || "")}" title="Mark as booked for today (EST)">${bookedToday ? "✓ Booked Today" : "Mark Booked"}</button></td>
@@ -898,6 +920,7 @@ async function renderBrokers() {
           <th>Link</th>
           <th>Focus</th>
           <th>Multi Unit</th>
+          <th>Bypass Daily Limit</th>
           <th>Urgent</th>
           <th>Hard Lock</th>
           <th>Booked Today</th>
@@ -981,6 +1004,23 @@ async function renderBrokers() {
     });
   });
 
+  document.querySelectorAll(".bypass-daily-limit-checkbox").forEach((cb) => {
+    cb.addEventListener("change", async (event) => {
+      const brokerName = event.currentTarget.dataset.brokerName;
+      if (!brokerName) return;
+      const enabled = event.currentTarget.checked;
+      const ok = await setBrokerBypassDailyLimitInSupabase(brokerName, enabled);
+      message.textContent = ok
+        ? `${brokerName} ${enabled ? "will now bypass" : "will now follow"} the daily booking limit.`
+        : `Could not update daily-limit bypass for ${brokerName}. Check Supabase brokers table and network.`;
+      if (!ok) {
+        event.currentTarget.checked = !enabled;
+        return;
+      }
+      await renderBrokers();
+    });
+  });
+
   document.querySelectorAll(".urgent-btn[data-broker-name]").forEach((btn) => {
     btn.addEventListener("click", async (event) => {
       const brokerName = event.currentTarget.dataset.brokerName;
@@ -1019,6 +1059,7 @@ form.addEventListener("submit", async (event) => {
   const specialRequests = document.getElementById("special-requests").value.trim();
   const booking = document.getElementById("booking-link").value.trim();
   const multiUnitRouter = document.getElementById("multi-unit-router")?.checked === true;
+  const bypassDailyLimit = document.getElementById("bypass-daily-limit")?.checked === true;
   const industryExclusions = getSelectedIndustryExclusions();
   const limiterEnabled = document.getElementById("net-worth-limiter-enabled")?.checked === true;
   const limiter = getNetWorthLimiterFromForm();
@@ -1048,6 +1089,7 @@ form.addEventListener("submit", async (event) => {
     specialRequests,
     booking,
     multi_unit_router: multiUnitRouter,
+    bypass_daily_limit: bypassDailyLimit,
     top_priority: existingTopPriority,
     industry_exclusions: industryExclusions,
     net_worth_limiter_enabled: limiter.net_worth_limiter_enabled,

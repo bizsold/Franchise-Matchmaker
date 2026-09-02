@@ -51,12 +51,12 @@ Upload all files in this folder to your static host.
 - Reads script, clicks `Next`, answers all 6 qualifying questions.
 - App returns matches and booking links.
 - After setter manually books, click `Booked` next to selected broker.
-- Broker is hidden from matches until midnight EST.
+- Broker is hidden from matches until midnight EST unless `Bypass Daily Limit` is enabled for that broker.
 
-## Admin Use
+## Broker Admin
 
-- Choose `Admin`, enter admin code.
-- Enable "Admin override" to include already-booked brokers.
+- Enable `Bypass Daily Limit` for any broker who should remain eligible after being booked that day.
+- Matching results label brokers who have already been booked on the current EST day.
 
 ## Notes
 
