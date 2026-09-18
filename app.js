@@ -685,8 +685,11 @@ const el = {
   tierTop: document.getElementById("tier-top"),
   tierTopHeading: document.getElementById("tier-top-heading"),
   tierMorning: document.getElementById("tier-morning"),
+  tierMorningHeading: document.getElementById("tier-morning-heading"),
   tierAfternoon: document.getElementById("tier-afternoon"),
+  tierAfternoonHeading: document.getElementById("tier-afternoon-heading"),
   tier2: document.getElementById("tier2"),
+  tier2Heading: document.getElementById("tier2-heading"),
   postMatchContent: document.getElementById("post-match-content"),
   restartSession: document.getElementById("restart-session"),
   confirmationPanel: document.getElementById("confirmation-panel"),
@@ -1143,12 +1146,8 @@ function syncMultiUnitAnswerState() {
   }
 }
 
-function wantsMultiUnitOnlyMatching() {
+function wantsMultiUnitMatching() {
   return meetsMultiUnitThresholds() && state.answers[MULTI_UNIT_ANSWER_ID] === true;
-}
-
-function getMultiUnitBrokers(brokers) {
-  return (brokers || []).filter((b) => b.multi_unit_router === true);
 }
 
 function getAssessmentOnlyBrokers(brokers) {
@@ -1162,30 +1161,8 @@ function excludeAssessmentOnlyBrokers(brokers) {
 function runStandardMatching(brokers, candidate, options = {}) {
   const { allowMultiUnit = true } = options;
   const regularPool = excludeAssessmentOnlyBrokers(brokers);
-  let brokerPool = regularPool;
-  let multiUnitInterested = false;
-  let multiUnitGateVoided = false;
-
-  if (allowMultiUnit) {
-    multiUnitInterested = wantsMultiUnitOnlyMatching();
-    if (multiUnitInterested) {
-      const multiUnitPool = getMultiUnitBrokers(regularPool);
-      // Booked multi-unit brokers remain eligible only when they bypass the daily limit.
-      const multiUnitMatches = filterBrokers(multiUnitPool, candidate, false);
-      if (multiUnitMatches.length) {
-        return {
-          eligibleBrokers: multiUnitMatches,
-          bookingFallbackActive: false,
-          multiUnitInterested: true,
-          multiUnitGateVoided: false,
-          brokerPool: multiUnitPool
-        };
-      }
-      // No available multi-unit matches (all booked and/or none qualify) — regular matching.
-      multiUnitGateVoided = true;
-      brokerPool = regularPool;
-    }
-  }
+  const brokerPool = regularPool;
+  const multiUnitInterested = allowMultiUnit && wantsMultiUnitMatching();
 
   let eligibleBrokers = filterBrokers(brokerPool, candidate, false);
   let bookingFallbackActive = false;
@@ -1194,7 +1171,7 @@ function runStandardMatching(brokers, candidate, options = {}) {
     bookingFallbackActive = eligibleBrokers.length > 0;
   }
 
-  return { eligibleBrokers, bookingFallbackActive, multiUnitInterested, multiUnitGateVoided, brokerPool };
+  return { eligibleBrokers, bookingFallbackActive, multiUnitInterested };
 }
 
 /** @returns {{ type: "script", index: number } | { type: "multi_unit" }[]} */
@@ -1434,8 +1411,6 @@ async function runMatching() {
   let eligibleBrokers = [];
   let bookingFallbackActive = false;
   let multiUnitInterested = false;
-  let multiUnitGateVoided = false;
-  let brokerPool = state.brokers;
   let assessmentRouted = false;
   let assessmentFallback = false;
 
@@ -1455,15 +1430,12 @@ async function runMatching() {
       const standard = runStandardMatching(state.brokers, candidate, { allowMultiUnit: false });
       eligibleBrokers = standard.eligibleBrokers;
       bookingFallbackActive = standard.bookingFallbackActive;
-      brokerPool = standard.brokerPool;
     }
   } else {
     const standard = runStandardMatching(state.brokers, candidate, { allowMultiUnit: true });
     eligibleBrokers = standard.eligibleBrokers;
     bookingFallbackActive = standard.bookingFallbackActive;
     multiUnitInterested = standard.multiUnitInterested;
-    multiUnitGateVoided = standard.multiUnitGateVoided;
-    brokerPool = standard.brokerPool;
   }
 
   if (el.matchFallbackBanner) {
@@ -1483,19 +1455,8 @@ async function runMatching() {
         el.matchFallbackBanner.textContent = "Lead did not meet Daniel Purim's criteria — showing standard matches.";
         el.matchFallbackBanner.classList.remove("hidden");
       }
-    } else if (multiUnitInterested && multiUnitGateVoided) {
-      if (!eligibleBrokers.length) {
-        el.matchFallbackBanner.textContent = "No available multi-unit brokers for today — showing regular matches instead, but none match this lead (location, credit, booked today, etc.).";
-        el.matchFallbackBanner.classList.remove("hidden");
-      } else {
-        el.matchFallbackBanner.textContent = "No available multi-unit brokers for today — showing regular matches instead.";
-        el.matchFallbackBanner.classList.remove("hidden");
-      }
-    } else if (multiUnitInterested && !brokerPool.length) {
-      el.matchFallbackBanner.textContent = "Lead confirmed multi-unit interest, but no brokers have Multi Unit routing enabled. Enable a broker in Brokers admin or adjust the lead answers.";
-      el.matchFallbackBanner.classList.remove("hidden");
     } else if (multiUnitInterested && !eligibleBrokers.length) {
-      el.matchFallbackBanner.textContent = "Multi-unit routing is active — only Multi Unit brokers are shown. No eligible matches for this lead (location, credit, booked today, etc.).";
+      el.matchFallbackBanner.textContent = "No eligible broker matches were found for this lead (location, credit, booked today, etc.).";
       el.matchFallbackBanner.classList.remove("hidden");
     } else if (bookingFallbackActive) {
       el.matchFallbackBanner.textContent = "No available brokers found for today — showing previously booked brokers as fallback. Use with caution.";
@@ -1511,10 +1472,18 @@ async function runMatching() {
     ...broker,
     booked_today: bookedNames.has(broker.name)
   }));
-  const tierTop = eligibleBrokers.filter(b => TOP_PRIORITY_LIST.includes(b.name));
-  const tierMorning = eligibleBrokers.filter(b => b.focus_today === true && b.focus_availability === "morning" && !TOP_PRIORITY_LIST.includes(b.name));
-  const tierAfternoon = eligibleBrokers.filter(b => b.focus_today === true && b.focus_availability === "afternoon" && !TOP_PRIORITY_LIST.includes(b.name));
-  const tier2 = eligibleBrokers.filter(b => b.focus_today !== true && !TOP_PRIORITY_LIST.includes(b.name));
+  const tierTop = multiUnitInterested
+    ? eligibleBrokers.filter(b => b.multi_unit_router === true)
+    : eligibleBrokers.filter(b => TOP_PRIORITY_LIST.includes(b.name));
+  const tierMorning = multiUnitInterested
+    ? []
+    : eligibleBrokers.filter(b => b.focus_today === true && b.focus_availability === "morning" && !TOP_PRIORITY_LIST.includes(b.name));
+  const tierAfternoon = multiUnitInterested
+    ? []
+    : eligibleBrokers.filter(b => b.focus_today === true && b.focus_availability === "afternoon" && !TOP_PRIORITY_LIST.includes(b.name));
+  const tier2 = multiUnitInterested
+    ? eligibleBrokers.filter(b => b.multi_unit_router !== true)
+    : eligibleBrokers.filter(b => b.focus_today !== true && !TOP_PRIORITY_LIST.includes(b.name));
 
   const multiUnitRow = !assessmentLead && meetsMultiUnitThresholds()
     ? `<tr><th>Multi-Unit Interest</th><td>${state.answers[MULTI_UNIT_ANSWER_ID] === true ? "Yes" : state.answers[MULTI_UNIT_ANSWER_ID] === false ? "No" : "—"}</td></tr>`
@@ -1532,11 +1501,17 @@ async function runMatching() {
       <tr><th>Timezone</th><td>${lead.timezone}</td></tr>
     </tbody></table>
   `;
-  if (el.tierTopHeading) el.tierTopHeading.classList.toggle("hidden", !tierTop.length);
-  if (el.tierTop) el.tierTop.innerHTML = tierTop.length ? renderTable(tierTop) : "";
+  if (el.tierTopHeading) {
+    el.tierTopHeading.textContent = multiUnitInterested ? "Best Matches" : "Urgent";
+    el.tierTopHeading.classList.toggle("hidden", !multiUnitInterested && !tierTop.length);
+  }
+  if (el.tierMorningHeading) el.tierMorningHeading.classList.toggle("hidden", multiUnitInterested);
+  if (el.tierAfternoonHeading) el.tierAfternoonHeading.classList.toggle("hidden", multiUnitInterested);
+  if (el.tier2Heading) el.tier2Heading.textContent = multiUnitInterested ? "Other Matches (Non Multi-Unit)" : "All Other Suitable Matches";
+  if (el.tierTop) el.tierTop.innerHTML = multiUnitInterested ? renderTable(tierTop) : (tierTop.length ? renderTable(tierTop) : "");
   el.tierMorning.innerHTML = tierMorning.length ? renderTable(tierMorning) : "";
   el.tierAfternoon.innerHTML = tierAfternoon.length ? renderTable(tierAfternoon) : "";
-  el.tier2.innerHTML = tier2.length ? renderTable(tier2) : "";
+  el.tier2.innerHTML = multiUnitInterested ? renderTable(tier2) : (tier2.length ? renderTable(tier2) : "");
   el.postMatchContent.innerHTML = `
     ${!eligibleBrokers.length ? `<p><strong>No matches found.</strong></p>` : ""}
     <h3>Closing Script</h3>
@@ -1795,7 +1770,13 @@ function resetSession() {
     el.matchFallbackBanner.classList.add("hidden");
   }
   if (el.tierTop) el.tierTop.innerHTML = "";
-  if (el.tierTopHeading) el.tierTopHeading.classList.add("hidden");
+  if (el.tierTopHeading) {
+    el.tierTopHeading.textContent = "Urgent";
+    el.tierTopHeading.classList.add("hidden");
+  }
+  if (el.tierMorningHeading) el.tierMorningHeading.classList.remove("hidden");
+  if (el.tierAfternoonHeading) el.tierAfternoonHeading.classList.remove("hidden");
+  if (el.tier2Heading) el.tier2Heading.textContent = "All Other Suitable Matches";
   el.tierMorning.innerHTML = "";
   el.tierAfternoon.innerHTML = "";
   el.tier2.innerHTML = "";
