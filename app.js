@@ -1165,13 +1165,14 @@ function runStandardMatching(brokers, candidate, options = {}) {
   const multiUnitInterested = allowMultiUnit && wantsMultiUnitMatching();
 
   let eligibleBrokers = filterBrokers(brokerPool, candidate, false);
+  const multiUnitGroupingActive = multiUnitInterested && eligibleBrokers.some((broker) => broker.multi_unit_router === true);
   let bookingFallbackActive = false;
   if (!eligibleBrokers.length) {
     eligibleBrokers = filterBrokers(brokerPool, candidate, true);
     bookingFallbackActive = eligibleBrokers.length > 0;
   }
 
-  return { eligibleBrokers, bookingFallbackActive, multiUnitInterested };
+  return { eligibleBrokers, bookingFallbackActive, multiUnitInterested, multiUnitGroupingActive };
 }
 
 /** @returns {{ type: "script", index: number } | { type: "multi_unit" }[]} */
@@ -1411,6 +1412,7 @@ async function runMatching() {
   let eligibleBrokers = [];
   let bookingFallbackActive = false;
   let multiUnitInterested = false;
+  let multiUnitGroupingActive = false;
   let assessmentRouted = false;
   let assessmentFallback = false;
 
@@ -1436,6 +1438,7 @@ async function runMatching() {
     eligibleBrokers = standard.eligibleBrokers;
     bookingFallbackActive = standard.bookingFallbackActive;
     multiUnitInterested = standard.multiUnitInterested;
+    multiUnitGroupingActive = standard.multiUnitGroupingActive;
   }
 
   if (el.matchFallbackBanner) {
@@ -1458,6 +1461,11 @@ async function runMatching() {
     } else if (multiUnitInterested && !eligibleBrokers.length) {
       el.matchFallbackBanner.textContent = "No eligible broker matches were found for this lead (location, credit, booked today, etc.).";
       el.matchFallbackBanner.classList.remove("hidden");
+    } else if (multiUnitInterested && !multiUnitGroupingActive) {
+      el.matchFallbackBanner.textContent = bookingFallbackActive
+        ? "No Multi Unit brokers are currently available — showing the normal focus list with previously booked brokers as fallback."
+        : "No Multi Unit brokers are currently available — showing the normal Urgent, Morning, and Afternoon focus list.";
+      el.matchFallbackBanner.classList.remove("hidden");
     } else if (bookingFallbackActive) {
       el.matchFallbackBanner.textContent = "No available brokers found for today — showing previously booked brokers as fallback. Use with caution.";
       el.matchFallbackBanner.classList.remove("hidden");
@@ -1472,16 +1480,16 @@ async function runMatching() {
     ...broker,
     booked_today: bookedNames.has(broker.name)
   }));
-  const tierTop = multiUnitInterested
+  const tierTop = multiUnitGroupingActive
     ? eligibleBrokers.filter(b => b.multi_unit_router === true)
     : eligibleBrokers.filter(b => TOP_PRIORITY_LIST.includes(b.name));
-  const tierMorning = multiUnitInterested
+  const tierMorning = multiUnitGroupingActive
     ? []
     : eligibleBrokers.filter(b => b.focus_today === true && b.focus_availability === "morning" && !TOP_PRIORITY_LIST.includes(b.name));
-  const tierAfternoon = multiUnitInterested
+  const tierAfternoon = multiUnitGroupingActive
     ? []
     : eligibleBrokers.filter(b => b.focus_today === true && b.focus_availability === "afternoon" && !TOP_PRIORITY_LIST.includes(b.name));
-  const tier2 = multiUnitInterested
+  const tier2 = multiUnitGroupingActive
     ? eligibleBrokers.filter(b => b.multi_unit_router !== true)
     : eligibleBrokers.filter(b => b.focus_today !== true && !TOP_PRIORITY_LIST.includes(b.name));
 
@@ -1502,16 +1510,16 @@ async function runMatching() {
     </tbody></table>
   `;
   if (el.tierTopHeading) {
-    el.tierTopHeading.textContent = multiUnitInterested ? "Best Matches" : "Urgent";
-    el.tierTopHeading.classList.toggle("hidden", !multiUnitInterested && !tierTop.length);
+    el.tierTopHeading.textContent = multiUnitGroupingActive ? "Best Matches" : "Urgent";
+    el.tierTopHeading.classList.toggle("hidden", !multiUnitGroupingActive && !tierTop.length);
   }
-  if (el.tierMorningHeading) el.tierMorningHeading.classList.toggle("hidden", multiUnitInterested);
-  if (el.tierAfternoonHeading) el.tierAfternoonHeading.classList.toggle("hidden", multiUnitInterested);
-  if (el.tier2Heading) el.tier2Heading.textContent = multiUnitInterested ? "Other Matches (Non Multi-Unit)" : "All Other Suitable Matches";
-  if (el.tierTop) el.tierTop.innerHTML = multiUnitInterested ? renderTable(tierTop) : (tierTop.length ? renderTable(tierTop) : "");
+  if (el.tierMorningHeading) el.tierMorningHeading.classList.toggle("hidden", multiUnitGroupingActive);
+  if (el.tierAfternoonHeading) el.tierAfternoonHeading.classList.toggle("hidden", multiUnitGroupingActive);
+  if (el.tier2Heading) el.tier2Heading.textContent = multiUnitGroupingActive ? "Other Matches (Non Multi-Unit)" : "All Other Suitable Matches";
+  if (el.tierTop) el.tierTop.innerHTML = multiUnitGroupingActive ? renderTable(tierTop) : (tierTop.length ? renderTable(tierTop) : "");
   el.tierMorning.innerHTML = tierMorning.length ? renderTable(tierMorning) : "";
   el.tierAfternoon.innerHTML = tierAfternoon.length ? renderTable(tierAfternoon) : "";
-  el.tier2.innerHTML = multiUnitInterested ? renderTable(tier2) : (tier2.length ? renderTable(tier2) : "");
+  el.tier2.innerHTML = multiUnitGroupingActive ? renderTable(tier2) : (tier2.length ? renderTable(tier2) : "");
   el.postMatchContent.innerHTML = `
     ${!eligibleBrokers.length ? `<p><strong>No matches found.</strong></p>` : ""}
     <h3>Closing Script</h3>
