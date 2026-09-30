@@ -276,6 +276,51 @@ td a {
   padding-bottom: 8px;
 }
 
+.audit-log-heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.audit-log-heading-row h2,
+.audit-log-heading-row p {
+  margin-top: 0;
+}
+
+#audit-log-list {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.audit-log-table {
+  min-width: 900px;
+  font-size: 12px;
+}
+
+.audit-log-table th:nth-child(1),
+.audit-log-table td:nth-child(1) {
+  width: 150px;
+  white-space: nowrap;
+}
+
+.audit-log-table th:nth-child(2),
+.audit-log-table td:nth-child(2) {
+  width: 120px;
+}
+
+.audit-log-table th:nth-child(3),
+.audit-log-table td:nth-child(3) {
+  width: 150px;
+  text-transform: capitalize;
+}
+
+.audit-log-table th:nth-child(4),
+.audit-log-table td:nth-child(4) {
+  width: 150px;
+}
+
 #broker-list table {
   font-size: 12px;
   table-layout: fixed;

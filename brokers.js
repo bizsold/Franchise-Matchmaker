@@ -2,6 +2,7 @@ const BROKER_STORAGE_KEY = "brokers-master-db-v1";
 const BROKER_WINDOW_NAME_PREFIX = "BROKER_DB_SYNC::";
 const FOCUS_DRAFT_KEY = "broker-focus-draft-v1";
 const FOCUS_DRAFT_DIRTY_KEY = "broker-focus-draft-dirty-v1";
+const ADMIN_NAME_STORAGE_KEY = "broker-admin-name-v1";
 const SUPABASE_URL = "https://ohiholwyaagawjqyocpq.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oaWhvbHd5YWFnYXdqcXlvY3BxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMzkyNzMsImV4cCI6MjA5MzgxNTI3M30.qqQmNslJASRxGuR_kpGv6-x05_erZWq52o4yUTL6qDk";
 const REGISTRATION_STATES = ["CA","HI","IL","IN","MD","MI","MN","NY","ND","RI","VA","WA","WI"];
@@ -87,8 +88,100 @@ const industryExclusionsPicker = document.getElementById("industry-exclusions-pi
 const saveBrokerBtn = document.getElementById("save-broker-btn");
 const cancelEditBtn = document.getElementById("cancel-edit-btn");
 const saveFocusListBtn = document.getElementById("save-focus-list-btn");
+const adminNameDisplay = document.getElementById("admin-name-display");
+const auditLogList = document.getElementById("audit-log-list");
+const auditLogMessage = document.getElementById("audit-log-message");
+const refreshAuditLogBtn = document.getElementById("refresh-audit-log-btn");
 let editingIndex = null;
 const supabaseClient = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+function getAdminName() {
+  try {
+    return sessionStorage.getItem(ADMIN_NAME_STORAGE_KEY)?.trim() || "Unknown Admin";
+  } catch (err) {
+    return "Unknown Admin";
+  }
+}
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+async function writeBrokerAuditLog({ action, brokerName, summary, beforeData = null, afterData = null }) {
+  if (!supabaseClient) return false;
+  try {
+    const { error } = await supabaseClient.from("broker_audit_log").insert({
+      admin_name: getAdminName(),
+      action,
+      broker_name: brokerName || null,
+      summary: summary || action,
+      before_data: beforeData,
+      after_data: afterData
+    });
+    return !error;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function fetchRecentBrokerAuditLogs() {
+  if (!supabaseClient) return null;
+  try {
+    const { data, error } = await supabaseClient
+      .from("broker_audit_log")
+      .select("id, changed_at, admin_name, action, broker_name, summary")
+      .order("changed_at", { ascending: false })
+      .limit(100);
+    return error || !Array.isArray(data) ? null : data;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function renderAuditLog() {
+  if (!auditLogList || !auditLogMessage) return;
+  auditLogMessage.textContent = "Loading audit log...";
+  const rows = await fetchRecentBrokerAuditLogs();
+  if (rows === null) {
+    auditLogList.innerHTML = "";
+    auditLogMessage.textContent = "Audit log unavailable. Run broker_audit_log.sql in Supabase, then refresh.";
+    return;
+  }
+  auditLogMessage.textContent = rows.length ? "" : "No broker changes have been logged yet.";
+  auditLogList.innerHTML = rows.length ? `
+    <table class="audit-log-table">
+      <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Broker</th><th>Details</th></tr></thead>
+      <tbody>${rows.map((row) => `
+        <tr>
+          <td>${escapeHTML(new Date(row.changed_at).toLocaleString())}</td>
+          <td>${escapeHTML(row.admin_name)}</td>
+          <td>${escapeHTML(String(row.action || "").replace(/_/g, " "))}</td>
+          <td>${escapeHTML(row.broker_name || "—")}</td>
+          <td>${escapeHTML(row.summary || "")}</td>
+        </tr>
+      `).join("")}</tbody>
+    </table>
+  ` : "";
+}
+
+function describeBrokerChanges(beforeBroker, afterBroker) {
+  if (!beforeBroker) return "Broker added";
+  const labels = {
+    name: "name", minLiquid: "minimum liquid capital", minNetWorth: "minimum net worth",
+    minCredit: "minimum credit", location_mode: "location mode", location_states: "locations",
+    requiresStatus: "status criteria", specialRequests: "special requests", booking: "booking link",
+    industry_exclusions: "industry exclusions", net_worth_limiter_enabled: "net worth limiter",
+    net_worth_limiter: "maximum net worth", multi_unit_router: "Multi Unit",
+    bypass_daily_limit: "Bypass Daily Limit"
+  };
+  const changed = Object.keys(labels).filter((key) => JSON.stringify(beforeBroker[key] ?? null) !== JSON.stringify(afterBroker[key] ?? null));
+  return changed.length ? `Edited ${changed.map((key) => labels[key]).join(", ")}` : "Broker saved with no criteria changes";
+}
 
 function readFocusDraft() {
   try {
@@ -945,17 +1038,26 @@ async function renderBrokers() {
     btn.addEventListener("click", async (event) => {
       const index = Number(event.currentTarget.dataset.index);
       const brokersRaw = readBrokers();
-      const brokerName = brokersRaw[index]?.name || "this broker";
+      const deletedBroker = brokersRaw[index] ? JSON.parse(JSON.stringify(brokersRaw[index])) : null;
+      const brokerName = deletedBroker?.name || "this broker";
       const confirmed = window.confirm(`Delete ${brokerName}? This cannot be undone.`);
       if (!confirmed) return;
       const result = await deleteBrokerFromSupabase(brokerName);
       brokersRaw.splice(index, 1);
       saveBrokers(brokersRaw);
+      await writeBrokerAuditLog({
+        action: "broker_deleted",
+        brokerName,
+        summary: result.ok ? "Broker deleted" : "Broker removed locally; Supabase broker delete failed",
+        beforeData: deletedBroker,
+        afterData: null
+      });
       editingIndex = null;
       message.textContent = result.ok
         ? `${brokerName} deleted.`
         : `${brokerName} removed locally, but Supabase delete failed. Check network or the brokers table.`;
       await renderBrokers();
+      await renderAuditLog();
     });
   });
 
@@ -980,10 +1082,20 @@ async function renderBrokers() {
       const wasLocked = event.currentTarget.classList.contains("active");
       const nextLocked = !wasLocked;
       const ok = await setBrokerHardLockInSupabase(brokerName, nextLocked);
+      if (ok) {
+        await writeBrokerAuditLog({
+          action: nextLocked ? "broker_locked" : "broker_unlocked",
+          brokerName,
+          summary: nextLocked ? "Hard Lock enabled" : "Hard Lock removed",
+          beforeData: { hard_locked: wasLocked },
+          afterData: { hard_locked: nextLocked }
+        });
+      }
       message.textContent = ok
         ? `${brokerName} ${nextLocked ? "hard locked" : "unlocked"}.`
         : `Could not update hard lock for ${brokerName}. Check Supabase broker_locks table and network.`;
       await renderBrokers();
+      await renderAuditLog();
     });
   });
 
@@ -993,6 +1105,15 @@ async function renderBrokers() {
       if (!brokerName) return;
       const enabled = event.currentTarget.checked;
       const ok = await setBrokerMultiUnitRouterInSupabase(brokerName, enabled);
+      if (ok) {
+        await writeBrokerAuditLog({
+          action: enabled ? "multi_unit_enabled" : "multi_unit_disabled",
+          brokerName,
+          summary: `Multi Unit routing ${enabled ? "enabled" : "disabled"}`,
+          beforeData: { multi_unit_router: !enabled },
+          afterData: { multi_unit_router: enabled }
+        });
+      }
       message.textContent = ok
         ? `${brokerName} ${enabled ? "enabled" : "disabled"} for multi-unit routing.`
         : `Could not update multi-unit flag for ${brokerName}. Check Supabase brokers table and network.`;
@@ -1001,6 +1122,7 @@ async function renderBrokers() {
         return;
       }
       await renderBrokers();
+      await renderAuditLog();
     });
   });
 
@@ -1010,6 +1132,15 @@ async function renderBrokers() {
       if (!brokerName) return;
       const enabled = event.currentTarget.checked;
       const ok = await setBrokerBypassDailyLimitInSupabase(brokerName, enabled);
+      if (ok) {
+        await writeBrokerAuditLog({
+          action: enabled ? "daily_limit_bypass_enabled" : "daily_limit_bypass_disabled",
+          brokerName,
+          summary: `Bypass Daily Limit ${enabled ? "enabled" : "disabled"}`,
+          beforeData: { bypass_daily_limit: !enabled },
+          afterData: { bypass_daily_limit: enabled }
+        });
+      }
       message.textContent = ok
         ? `${brokerName} ${enabled ? "will now bypass" : "will now follow"} the daily booking limit.`
         : `Could not update daily-limit bypass for ${brokerName}. Check Supabase brokers table and network.`;
@@ -1018,6 +1149,7 @@ async function renderBrokers() {
         return;
       }
       await renderBrokers();
+      await renderAuditLog();
     });
   });
 
@@ -1028,10 +1160,20 @@ async function renderBrokers() {
       const wasUrgent = event.currentTarget.classList.contains("active");
       const nextUrgent = !wasUrgent;
       const ok = await setBrokerTopPriorityInSupabase(brokerName, nextUrgent);
+      if (ok) {
+        await writeBrokerAuditLog({
+          action: nextUrgent ? "urgent_enabled" : "urgent_disabled",
+          brokerName,
+          summary: `Urgent priority ${nextUrgent ? "enabled" : "disabled"}`,
+          beforeData: { top_priority: wasUrgent },
+          afterData: { top_priority: nextUrgent }
+        });
+      }
       message.textContent = ok
         ? `${brokerName} ${nextUrgent ? "marked" : "unmarked"} as Urgent.`
         : `Could not update Urgent for ${brokerName}. Check Supabase brokers table and network.`;
       await renderBrokers();
+      await renderAuditLog();
     });
   });
 
@@ -1074,6 +1216,9 @@ form.addEventListener("submit", async (event) => {
   }
 
   const brokers = readBrokers();
+  const beforeBroker = editingIndex !== null && brokers[editingIndex]
+    ? JSON.parse(JSON.stringify(brokers[editingIndex]))
+    : null;
   // Urgent is table-only; keep the existing value when editing, default off for new brokers.
   const existingTopPriority = editingIndex !== null
     ? brokers[editingIndex]?.top_priority === true
@@ -1117,6 +1262,15 @@ form.addEventListener("submit", async (event) => {
     await deleteBrokerFromSupabase(previousName);
   }
   saveBrokers(brokers);
+  if (upsertResult.ok) {
+    await writeBrokerAuditLog({
+      action: beforeBroker ? "broker_criteria_edited" : "broker_added",
+      brokerName: savedBroker.name,
+      summary: describeBrokerChanges(beforeBroker, savedBroker),
+      beforeData: beforeBroker,
+      afterData: savedBroker
+    });
+  }
 
   form.reset();
   setNetWorthLimiterForm(false, null);
@@ -1130,14 +1284,21 @@ form.addEventListener("submit", async (event) => {
     ? `${name} saved to master broker database.`
     : `${name} saved locally, but Supabase sync failed. Check network or that the brokers table exists.`;
   await renderBrokers();
+  await renderAuditLog();
 });
 
 (async () => {
   try {
+    if (getAdminName() === "Unknown Admin") {
+      alert("Please enter the admin code and your name before opening the broker admin panel.");
+      window.location.replace("./index.html");
+      return;
+    }
     syncFromWindowName();
     ensureDefaultRoster();
     await seedBrokersToSupabaseIfEmpty();
     await renderBrokers();
+    await renderAuditLog();
   } catch (error) {
     brokerList.innerHTML = "<p>Unable to load broker list. Please refresh this page.</p>";
   }
@@ -1174,6 +1335,10 @@ saveFocusListBtn.addEventListener("click", async () => {
   setFocusDraftDirty(true);
   const draft = readFocusDraft();
   const brokers = JSON.parse(localStorage.getItem(BROKER_STORAGE_KEY) || "[]");
+  const previousFocusByName = new Map(brokers.map((broker) => [broker.name, {
+    focus_today: broker.focus_today === true,
+    focus_availability: normalizeFocusAvailability(broker.focus_availability, broker.focus_today === true)
+  }]));
   brokers.forEach((broker) => {
     if (draft && Object.prototype.hasOwnProperty.call(draft, broker.name)) {
       broker.focus_availability = normalizeFocusAvailability(draft[broker.name]);
@@ -1196,11 +1361,34 @@ saveFocusListBtn.addEventListener("click", async () => {
   if (!result.ok || !brokerSyncOk) {
     alert("Focus availability saved locally, but could not fully sync to Supabase. Check your network and Supabase tables.");
   } else {
+    const auditEntries = brokers.flatMap((broker) => {
+      const before = previousFocusByName.get(broker.name) || { focus_today: false, focus_availability: "" };
+      const after = {
+        focus_today: broker.focus_today === true,
+        focus_availability: normalizeFocusAvailability(broker.focus_availability, broker.focus_today === true)
+      };
+      if (before.focus_today === after.focus_today && before.focus_availability === after.focus_availability) return [];
+      const label = after.focus_availability === "morning"
+        ? "Morning Available"
+        : after.focus_availability === "afternoon" ? "Afternoon Available" : "Not on focus list";
+      return [writeBrokerAuditLog({
+        action: "focus_status_changed",
+        brokerName: broker.name,
+        summary: `Focus status changed to ${label}`,
+        beforeData: before,
+        afterData: after
+      })];
+    });
+    await Promise.all(auditEntries);
     clearFocusDraft();
     alert("Focus availability saved successfully.");
   }
-  renderBrokers();
+  await renderBrokers();
+  await renderAuditLog();
 });
+
+if (adminNameDisplay) adminNameDisplay.textContent = getAdminName();
+if (refreshAuditLogBtn) refreshAuditLogBtn.addEventListener("click", renderAuditLog);
 
 // Refresh roster when another tab updates brokers.
 window.addEventListener("storage", (event) => {

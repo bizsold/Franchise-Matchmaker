@@ -30,6 +30,8 @@ create table if not exists bookings (
 );
 ```
 
+For broker administration history, also run `broker_audit_log.sql` in the Supabase SQL Editor. The query at the bottom of that file returns the 100 most recent changes.
+
 ### 2) Add Supabase keys
 
 Open `app.js` and set:

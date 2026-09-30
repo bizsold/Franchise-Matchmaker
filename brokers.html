@@ -12,6 +12,7 @@
       <section class="panel add-broker-panel">
         <h1>Brokers Page</h1>
         <p>Add new brokers to your master broker database.</p>
+        <p class="subtitle">Signed in as <strong id="admin-name-display">Unknown Admin</strong></p>
       </section>
 
       <section class="panel add-broker-panel">
@@ -73,6 +74,18 @@
           </div>
         </form>
         <p id="broker-form-message" class="subtitle"></p>
+      </section>
+
+      <section class="panel">
+        <div class="audit-log-heading-row">
+          <div>
+            <h2>Broker Audit Log</h2>
+            <p class="subtitle">The 100 most recent broker administration changes.</p>
+          </div>
+          <button id="refresh-audit-log-btn" type="button" class="secondary">Refresh Log</button>
+        </div>
+        <p id="audit-log-message" class="subtitle"></p>
+        <div id="audit-log-list"></div>
       </section>
 
       <section class="panel">

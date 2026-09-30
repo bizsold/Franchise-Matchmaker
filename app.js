@@ -5,6 +5,7 @@ const BROKER_STORAGE_KEY = "brokers-master-db-v1";
 const BROKER_WINDOW_NAME_PREFIX = "BROKER_DB_SYNC::";
 const SCRIPT_STORAGE_KEY = "matchmaker-script-config-v1";
 const SCRIPT_WINDOW_NAME_PREFIX = "SCRIPT_CFG_SYNC::";
+const ADMIN_NAME_STORAGE_KEY = "broker-admin-name-v1";
 
 function normalizeFocusAvailability(value, focusToday = false) {
   if (value === "morning" || value === "afternoon") return value;
@@ -639,6 +640,7 @@ function getScriptConfig() {
 const state = {
   role: "setter",
   isAdmin: false,
+  adminCodeVerified: false,
   leadType: SCRIPT_LEAD_TYPES.franchise_show,
   answers: {},
   step: 0,
@@ -656,6 +658,7 @@ const el = {
   role: document.getElementById("role"),
   adminCodeRow: document.getElementById("admin-code-row"),
   setterNameRow: document.getElementById("setter-name-row"),
+  setterNameLabel: document.getElementById("setter-name-label"),
   adminCode: document.getElementById("admin-code"),
   setterName: document.getElementById("setter-name"),
   leadTypeRow: document.getElementById("lead-type-row"),
@@ -1759,12 +1762,16 @@ function resetSession() {
   state.unqualifiedExportText = "";
   state.unqualifiedReturnStep = 0;
   state.leadType = SCRIPT_LEAD_TYPES.franchise_show;
+  state.adminCodeVerified = false;
   el.setterName.value = "";
   el.adminCode.value = "";
   el.role.value = "setter";
   if (el.leadType) el.leadType.value = SCRIPT_LEAD_TYPES.franchise_show;
   el.adminCodeRow.classList.add("hidden");
   el.setterNameRow.classList.remove("hidden");
+  if (el.setterNameLabel) el.setterNameLabel.textContent = "Your Name";
+  el.setterName.placeholder = "Setter first name";
+  el.startSession.textContent = "Start";
   if (el.leadTypeRow) el.leadTypeRow.classList.remove("hidden");
   el.scriptPanel.classList.add("hidden");
   el.adminPanel.classList.add("hidden");
@@ -1808,8 +1815,14 @@ function resetSession() {
 
 el.role.addEventListener("change", () => {
   const isAdmin = el.role.value === "admin";
+  state.isAdmin = false;
+  state.adminCodeVerified = false;
   el.adminCodeRow.classList.toggle("hidden", !isAdmin);
   el.setterNameRow.classList.toggle("hidden", isAdmin);
+  if (el.setterNameLabel) el.setterNameLabel.textContent = "Your Name";
+  el.setterName.placeholder = "Setter first name";
+  el.setterName.value = "";
+  el.startSession.textContent = "Start";
   if (el.leadTypeRow) el.leadTypeRow.classList.toggle("hidden", isAdmin);
   if (isAdmin) {
     el.adminCode.value = "";
@@ -1821,18 +1834,35 @@ el.role.addEventListener("change", () => {
 
 el.startSession.addEventListener("click", async () => {
   state.role = el.role.value;
-  state.isAdmin = state.role === "admin" && el.adminCode.value === ADMIN_CODE;
-  if (state.role === "admin" && !state.isAdmin) {
-    alert("Admin code invalid.");
-    return;
-  }
-  if (!state.isAdmin) {
-    const setterName = el.setterName?.value.trim() || "";
-    if (!setterName) {
-      alert("Please enter your name before starting.");
-      el.setterName?.focus();
+  if (state.role === "admin" && !state.adminCodeVerified) {
+    state.isAdmin = false;
+    if (el.adminCode.value !== ADMIN_CODE) {
+      alert("Admin code invalid.");
       return;
     }
+    state.adminCodeVerified = true;
+    el.adminCodeRow.classList.add("hidden");
+    el.setterNameRow.classList.remove("hidden");
+    if (el.setterNameLabel) el.setterNameLabel.textContent = "Admin Name";
+    el.setterName.placeholder = "Enter your name";
+    el.setterName.value = "";
+    el.startSession.textContent = "Open Admin";
+    el.setterName.focus();
+    return;
+  }
+  state.isAdmin = state.role === "admin" && state.adminCodeVerified;
+  const operatorName = el.setterName?.value.trim() || "";
+  if (!operatorName) {
+    if (state.isAdmin) {
+      alert("Please enter your name before opening the admin panel.");
+    } else {
+      alert("Please enter your name before starting.");
+    }
+    el.setterName?.focus();
+    return;
+  }
+  if (state.isAdmin) {
+    try { sessionStorage.setItem(ADMIN_NAME_STORAGE_KEY, operatorName); } catch (err) { /* ignore */ }
   }
   state.leadType = el.leadType?.value || SCRIPT_LEAD_TYPES.franchise_show;
   state.db = new BookingStore();
