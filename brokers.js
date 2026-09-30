@@ -89,9 +89,6 @@ const saveBrokerBtn = document.getElementById("save-broker-btn");
 const cancelEditBtn = document.getElementById("cancel-edit-btn");
 const saveFocusListBtn = document.getElementById("save-focus-list-btn");
 const adminNameDisplay = document.getElementById("admin-name-display");
-const auditLogList = document.getElementById("audit-log-list");
-const auditLogMessage = document.getElementById("audit-log-message");
-const refreshAuditLogBtn = document.getElementById("refresh-audit-log-btn");
 let editingIndex = null;
 const supabaseClient = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
@@ -101,15 +98,6 @@ function getAdminName() {
   } catch (err) {
     return "Unknown Admin";
   }
-}
-
-function escapeHTML(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
 
 async function writeBrokerAuditLog({ action, brokerName, summary, beforeData = null, afterData = null }) {
@@ -127,46 +115,6 @@ async function writeBrokerAuditLog({ action, brokerName, summary, beforeData = n
   } catch (err) {
     return false;
   }
-}
-
-async function fetchRecentBrokerAuditLogs() {
-  if (!supabaseClient) return null;
-  try {
-    const { data, error } = await supabaseClient
-      .from("broker_audit_log")
-      .select("id, changed_at, admin_name, action, broker_name, summary")
-      .order("changed_at", { ascending: false })
-      .limit(100);
-    return error || !Array.isArray(data) ? null : data;
-  } catch (err) {
-    return null;
-  }
-}
-
-async function renderAuditLog() {
-  if (!auditLogList || !auditLogMessage) return;
-  auditLogMessage.textContent = "Loading audit log...";
-  const rows = await fetchRecentBrokerAuditLogs();
-  if (rows === null) {
-    auditLogList.innerHTML = "";
-    auditLogMessage.textContent = "Audit log unavailable. Run broker_audit_log.sql in Supabase, then refresh.";
-    return;
-  }
-  auditLogMessage.textContent = rows.length ? "" : "No broker changes have been logged yet.";
-  auditLogList.innerHTML = rows.length ? `
-    <table class="audit-log-table">
-      <thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Broker</th><th>Details</th></tr></thead>
-      <tbody>${rows.map((row) => `
-        <tr>
-          <td>${escapeHTML(new Date(row.changed_at).toLocaleString())}</td>
-          <td>${escapeHTML(row.admin_name)}</td>
-          <td>${escapeHTML(String(row.action || "").replace(/_/g, " "))}</td>
-          <td>${escapeHTML(row.broker_name || "—")}</td>
-          <td>${escapeHTML(row.summary || "")}</td>
-        </tr>
-      `).join("")}</tbody>
-    </table>
-  ` : "";
 }
 
 function describeBrokerChanges(beforeBroker, afterBroker) {
@@ -1057,7 +1005,6 @@ async function renderBrokers() {
         ? `${brokerName} deleted.`
         : `${brokerName} removed locally, but Supabase delete failed. Check network or the brokers table.`;
       await renderBrokers();
-      await renderAuditLog();
     });
   });
 
@@ -1095,7 +1042,6 @@ async function renderBrokers() {
         ? `${brokerName} ${nextLocked ? "hard locked" : "unlocked"}.`
         : `Could not update hard lock for ${brokerName}. Check Supabase broker_locks table and network.`;
       await renderBrokers();
-      await renderAuditLog();
     });
   });
 
@@ -1122,7 +1068,6 @@ async function renderBrokers() {
         return;
       }
       await renderBrokers();
-      await renderAuditLog();
     });
   });
 
@@ -1149,7 +1094,6 @@ async function renderBrokers() {
         return;
       }
       await renderBrokers();
-      await renderAuditLog();
     });
   });
 
@@ -1173,7 +1117,6 @@ async function renderBrokers() {
         ? `${brokerName} ${nextUrgent ? "marked" : "unmarked"} as Urgent.`
         : `Could not update Urgent for ${brokerName}. Check Supabase brokers table and network.`;
       await renderBrokers();
-      await renderAuditLog();
     });
   });
 
@@ -1284,7 +1227,6 @@ form.addEventListener("submit", async (event) => {
     ? `${name} saved to master broker database.`
     : `${name} saved locally, but Supabase sync failed. Check network or that the brokers table exists.`;
   await renderBrokers();
-  await renderAuditLog();
 });
 
 (async () => {
@@ -1298,7 +1240,6 @@ form.addEventListener("submit", async (event) => {
     ensureDefaultRoster();
     await seedBrokersToSupabaseIfEmpty();
     await renderBrokers();
-    await renderAuditLog();
   } catch (error) {
     brokerList.innerHTML = "<p>Unable to load broker list. Please refresh this page.</p>";
   }
@@ -1384,11 +1325,9 @@ saveFocusListBtn.addEventListener("click", async () => {
     alert("Focus availability saved successfully.");
   }
   await renderBrokers();
-  await renderAuditLog();
 });
 
 if (adminNameDisplay) adminNameDisplay.textContent = getAdminName();
-if (refreshAuditLogBtn) refreshAuditLogBtn.addEventListener("click", renderAuditLog);
 
 // Refresh roster when another tab updates brokers.
 window.addEventListener("storage", (event) => {
