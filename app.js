@@ -2033,6 +2033,7 @@ if (el.startNewSession) {
 if (el.confirmationGoBack) {
   el.confirmationGoBack.addEventListener("click", async () => {
     const btn = el.confirmationGoBack;
+    const revertedBrokerName = state.lastBooking?.broker_name || "";
     btn.disabled = true;
     const originalLabel = btn.textContent;
     btn.textContent = "Reverting...";
@@ -2046,6 +2047,14 @@ if (el.confirmationGoBack) {
         state.bookingsToday = await state.db.fetchTodayBookings();
       }
       state.lastBooking = null;
+      document.querySelectorAll(".book-btn").forEach((bookButton) => {
+        if (bookButton.dataset.name !== revertedBrokerName) return;
+        bookButton.disabled = false;
+        bookButton.textContent = bookButton.dataset.bookedBackup === "true"
+          ? "Use Backup Broker"
+          : "Select for Booking";
+      });
+      await runMatching();
       el.confirmationPanel.classList.add("hidden");
       el.confirmationBrokerInfo.innerHTML = "";
       el.confirmationCandidateInfo.innerHTML = "";
