@@ -693,6 +693,7 @@ const el = {
   tierAfternoonHeading: document.getElementById("tier-afternoon-heading"),
   tier2: document.getElementById("tier2"),
   tier2Heading: document.getElementById("tier2-heading"),
+  alreadyBookedToday: document.getElementById("already-booked-today"),
   postMatchContent: document.getElementById("post-match-content"),
   restartSession: document.getElementById("restart-session"),
   confirmationPanel: document.getElementById("confirmation-panel"),
@@ -1334,8 +1335,9 @@ function renderQuestion() {
   }
 }
 
-function renderTable(matches) {
+function renderTable(matches, options = {}) {
   if (!matches.length) return "<p>No matches.</p>";
+  const { backup = false } = options;
   const rows = matches.map((b) => `
     <tr>
       <td>${escapeHTML(b.name)}${b.booked_today ? '<span class="match-booked-today-badge">Previously booked today</span>' : ''}</td>
@@ -1343,7 +1345,7 @@ function renderTable(matches) {
       <td>$${b.minNetWorth.toLocaleString()}</td>
       <td>${b.minCredit}+</td>
       <td>${b.specialRequests ? escapeHTML(b.specialRequests) : "—"}</td>
-      <td><button class="book-btn" data-name="${b.name}">Select for Booking</button></td>
+      <td><button class="book-btn" data-name="${b.name}"${backup ? ' data-booked-backup="true"' : ""}>${backup ? "Use Backup Broker" : "Select for Booking"}</button></td>
     </tr>`).join("");
   return `<table><thead><tr><th>Broker</th><th>Min Liquid</th><th>Min Net Worth</th><th>Credit</th><th>Special Requests</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -1444,33 +1446,48 @@ async function runMatching() {
     multiUnitGroupingActive = standard.multiUnitGroupingActive;
   }
 
+  const bookedBackupPool = assessmentRouted
+    ? getAssessmentOnlyBrokers(state.brokers)
+    : excludeAssessmentOnlyBrokers(state.brokers);
+  const alreadyBookedBrokers = filterBrokers(
+    bookedBackupPool,
+    candidate,
+    true,
+    { includeAssessmentBrokers: assessmentRouted }
+  ).filter((broker) => bookedNames.has(broker.name));
+
+  // Booked brokers always belong in the dedicated backup table, including
+  // brokers configured to bypass the daily limit.
+  eligibleBrokers = eligibleBrokers.filter((broker) => !bookedNames.has(broker.name));
+  bookingFallbackActive = eligibleBrokers.length === 0 && alreadyBookedBrokers.length > 0;
+  multiUnitGroupingActive = multiUnitInterested && eligibleBrokers.some((broker) => broker.multi_unit_router === true);
+
   if (el.matchFallbackBanner) {
     if (assessmentRouted) {
       el.matchFallbackBanner.textContent = bookingFallbackActive
-        ? "Assessment lead — routed to Daniel Purim (booked today fallback)."
+        ? "Assessment lead — Daniel Purim is already booked today and is shown only in the backup table below."
         : "Assessment lead — routed to Daniel Purim.";
       el.matchFallbackBanner.classList.remove("hidden");
     } else if (assessmentFallback) {
       if (!eligibleBrokers.length) {
-        el.matchFallbackBanner.textContent = "Lead did not meet Daniel Purim's criteria — no standard matches found.";
-        el.matchFallbackBanner.classList.remove("hidden");
-      } else if (bookingFallbackActive) {
-        el.matchFallbackBanner.textContent = "Lead did not meet Daniel Purim's criteria — showing standard matches (including previously booked brokers).";
+        el.matchFallbackBanner.textContent = alreadyBookedBrokers.length
+          ? "Lead did not meet Daniel Purim's criteria — no unbooked standard matches are available. See the Already Booked Today backup table below."
+          : "Lead did not meet Daniel Purim's criteria — no standard matches found.";
         el.matchFallbackBanner.classList.remove("hidden");
       } else {
         el.matchFallbackBanner.textContent = "Lead did not meet Daniel Purim's criteria — showing standard matches.";
         el.matchFallbackBanner.classList.remove("hidden");
       }
     } else if (multiUnitInterested && !eligibleBrokers.length) {
-      el.matchFallbackBanner.textContent = "No eligible broker matches were found for this lead (location, credit, booked today, etc.).";
+      el.matchFallbackBanner.textContent = alreadyBookedBrokers.length
+        ? "No unbooked broker matches are available. Use the Already Booked Today table below only as a backup."
+        : "No eligible broker matches were found for this lead (location, credit, etc.).";
       el.matchFallbackBanner.classList.remove("hidden");
     } else if (multiUnitInterested && !multiUnitGroupingActive) {
-      el.matchFallbackBanner.textContent = bookingFallbackActive
-        ? "No Multi Unit brokers are currently available — showing the normal focus list with previously booked brokers as fallback."
-        : "No Multi Unit brokers are currently available — showing the normal Urgent, Morning, and Afternoon focus list.";
+      el.matchFallbackBanner.textContent = "No unbooked Multi Unit brokers are currently available — showing the normal Urgent, Morning, and Afternoon focus list.";
       el.matchFallbackBanner.classList.remove("hidden");
     } else if (bookingFallbackActive) {
-      el.matchFallbackBanner.textContent = "No available brokers found for today — showing previously booked brokers as fallback. Use with caution.";
+      el.matchFallbackBanner.textContent = "No unbooked brokers are available — use the Already Booked Today table below only as a backup.";
       el.matchFallbackBanner.classList.remove("hidden");
     } else {
       el.matchFallbackBanner.textContent = "";
@@ -1523,8 +1540,13 @@ async function runMatching() {
   el.tierMorning.innerHTML = tierMorning.length ? renderTable(tierMorning) : "";
   el.tierAfternoon.innerHTML = tierAfternoon.length ? renderTable(tierAfternoon) : "";
   el.tier2.innerHTML = multiUnitGroupingActive ? renderTable(tier2) : (tier2.length ? renderTable(tier2) : "");
+  if (el.alreadyBookedToday) {
+    el.alreadyBookedToday.innerHTML = alreadyBookedBrokers.length
+      ? renderTable(alreadyBookedBrokers.map((broker) => ({ ...broker, booked_today: true })), { backup: true })
+      : "<p>No matching brokers have already been booked today.</p>";
+  }
   el.postMatchContent.innerHTML = `
-    ${!eligibleBrokers.length ? `<p><strong>No matches found.</strong></p>` : ""}
+    ${!eligibleBrokers.length && !alreadyBookedBrokers.length ? `<p><strong>No matches found.</strong></p>` : ""}
     <h3>Closing Script</h3>
     <pre class="script-text">${state.scriptConfig.closingScript.replace("[Timezone]", lead.timezone)}</pre>
     <h3>Submission Form</h3>
@@ -1538,7 +1560,10 @@ async function runMatching() {
     btn.addEventListener("click", async (evt) => {
       const button = evt.currentTarget;
       const brokerName = button.dataset.name;
-      const confirmed = window.confirm(`Confirm booking with ${brokerName}? This will mark them as booked for the day.`);
+      const isBookedBackup = button.dataset.bookedBackup === "true";
+      const confirmed = window.confirm(isBookedBackup
+        ? `${brokerName} has already been booked today. Only continue if no unbooked broker is available. Book them again?`
+        : `Confirm booking with ${brokerName}? This will mark them as booked for the day.`);
       if (!confirmed) return;
       button.disabled = true;
       const originalLabel = button.textContent;
@@ -1795,6 +1820,7 @@ function resetSession() {
   el.tierMorning.innerHTML = "";
   el.tierAfternoon.innerHTML = "";
   el.tier2.innerHTML = "";
+  if (el.alreadyBookedToday) el.alreadyBookedToday.innerHTML = "";
   el.postMatchContent.innerHTML = "";
   if (el.confirmationPanel) {
     el.confirmationPanel.classList.add("hidden");

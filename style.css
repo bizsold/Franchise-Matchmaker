@@ -700,7 +700,8 @@ td a {
 
 #tier-top,
 :is(#tier-morning, #tier-afternoon),
-#tier2 {
+#tier2,
+#already-booked-today {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -710,7 +711,9 @@ td a {
 :is(#tier-morning, #tier-afternoon) td:first-child,
 :is(#tier-morning, #tier-afternoon) th:first-child,
 #tier2 td:first-child,
-#tier2 th:first-child {
+#tier2 th:first-child,
+#already-booked-today td:first-child,
+#already-booked-today th:first-child {
   white-space: nowrap;
   width: 1%;
   font-size: 12px;
@@ -722,7 +725,9 @@ td a {
 :is(#tier-morning, #tier-afternoon) td:nth-child(2),
 :is(#tier-morning, #tier-afternoon) td:nth-child(3),
 #tier2 td:nth-child(2),
-#tier2 td:nth-child(3) {
+#tier2 td:nth-child(3),
+#already-booked-today td:nth-child(2),
+#already-booked-today td:nth-child(3) {
   max-width: 100px;
   width: 100px;
   white-space: nowrap;
@@ -736,7 +741,9 @@ td a {
 :is(#tier-morning, #tier-afternoon) th:nth-child(2),
 :is(#tier-morning, #tier-afternoon) th:nth-child(3),
 #tier2 th:nth-child(2),
-#tier2 th:nth-child(3) {
+#tier2 th:nth-child(3),
+#already-booked-today th:nth-child(2),
+#already-booked-today th:nth-child(3) {
   max-width: 100px;
   width: 100px;
   white-space: normal;
@@ -748,7 +755,8 @@ td a {
 /* Credit — slightly narrower */
 #tier-top td:nth-child(4),
 :is(#tier-morning, #tier-afternoon) td:nth-child(4),
-#tier2 td:nth-child(4) {
+#tier2 td:nth-child(4),
+#already-booked-today td:nth-child(4) {
   max-width: 68px;
   width: 68px;
   white-space: nowrap;
@@ -759,7 +767,8 @@ td a {
 
 #tier-top th:nth-child(4),
 :is(#tier-morning, #tier-afternoon) th:nth-child(4),
-#tier2 th:nth-child(4) {
+#tier2 th:nth-child(4),
+#already-booked-today th:nth-child(4) {
   max-width: 68px;
   width: 68px;
   white-space: normal;
@@ -773,7 +782,9 @@ td a {
 :is(#tier-morning, #tier-afternoon) td:nth-child(5),
 :is(#tier-morning, #tier-afternoon) th:nth-child(5),
 #tier2 td:nth-child(5),
-#tier2 th:nth-child(5) {
+#tier2 th:nth-child(5),
+#already-booked-today td:nth-child(5),
+#already-booked-today th:nth-child(5) {
   max-width: 320px;
   width: 320px;
   font-size: 12px;
@@ -784,9 +795,28 @@ td a {
 
 #tier-top td:last-child,
 :is(#tier-morning, #tier-afternoon) td:last-child,
-#tier2 td:last-child {
+#tier2 td:last-child,
+#already-booked-today td:last-child {
   white-space: nowrap;
   width: 1%;
+}
+
+.already-booked-section {
+  margin-top: 24px;
+  padding: 16px;
+  border: 2px solid #d97706;
+  border-radius: 10px;
+  background: #fffbeb;
+}
+
+.already-booked-section h3 {
+  margin-top: 0;
+  color: #92400e;
+}
+
+.already-booked-warning {
+  margin: 0 0 14px;
+  color: #78350f;
 }
 
 /* Brokers admin: hard lock row + toggle */
