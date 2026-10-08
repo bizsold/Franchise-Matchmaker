@@ -775,7 +775,7 @@ class BookingStore {
 
   async saveBooking(entry, source = "setter_app") {
     const today = this.currentDateEST();
-    const payload = { ...entry, date_est: today, created_at: new Date().toISOString() };
+    let payload = { ...entry, date_est: today, created_at: new Date().toISOString() };
     const client = this.ensureClient();
     if (!client) {
       await this.logBookingEvent({
@@ -792,7 +792,15 @@ class BookingStore {
       });
       return { ok: false, error: { message: "Supabase unavailable. Check your connection and refresh." }, booking: payload };
     }
-    const { error } = await client.from("bookings").insert(payload);
+    let { data: saved, error } = await client.from("bookings").insert(payload).select().single();
+    // A retry after an uncertain response reuses its request ID.
+    if (error?.code === "23505" && payload.request_id) {
+      const previous = await client.from("bookings").select("*").eq("request_id", payload.request_id).single();
+      if (!previous.error && previous.data?.broker_name === payload.broker_name && previous.data?.setter_name === payload.setter_name) {
+        return { ok: true, booking: previous.data };
+      }
+    }
+    if (!error && saved) payload = saved;
     await this.logBookingEvent({
       event_type: "booked",
       broker_name: payload.broker_name,
@@ -832,10 +840,7 @@ class BookingStore {
     const { error } = await client
       .from("bookings")
       .delete()
-      .eq("date_est", booking.date_est)
-      .eq("broker_name", booking.broker_name)
-      .eq("setter_name", booking.setter_name)
-      .eq("created_at", booking.created_at);
+      .eq("id", booking.id);
     await this.logBookingEvent({
       event_type: "unbooked",
       broker_name: booking.broker_name,
@@ -1222,7 +1227,7 @@ function filterBrokers(brokers, candidate, ignoreBookingExclusion, options = {})
   const { includeAssessmentBrokers = false } = options;
   const { lead, bookedNames } = candidate;
   const bookedSet = bookedNames instanceof Set ? bookedNames : new Set(bookedNames || []);
-  let pool = brokers.filter((b) => b.hard_locked !== true);
+  let pool = brokers.filter((b) => b.hard_locked !== true && b.weekly_available === true);
   if (!includeAssessmentBrokers) {
     pool = pool.filter((b) => !isAssessmentOnlyBroker(b));
   }
@@ -1390,6 +1395,21 @@ async function refreshLiveState() {
 
 async function runMatching() {
   await refreshLiveState();
+  const { data: weeklyUsage, error: weeklyError } = state.db?.ensureClient()
+    ? await state.db.client.rpc("get_broker_weekly_usage")
+    : { data: null, error: new Error("No connection") };
+  if (weeklyError || !Array.isArray(weeklyUsage)) {
+    if (el.alreadyBookedToday) el.alreadyBookedToday.innerHTML = "";
+    document.querySelectorAll(".book-btn").forEach((button) => { button.disabled = true; });
+    alert("Cannot verify weekly capacity. Please reconnect and run matching again.");
+    return;
+  }
+  const weeklyByName = new Map(weeklyUsage.map((row) => [row.broker_name, row]));
+  state.brokers = state.brokers.map((broker) => {
+    const usage = weeklyByName.get(broker.name);
+    return { ...broker, weekly_available: !!usage &&
+      (!usage.weekly_caps_enabled || usage.weekly_cap === null || Number(usage.weekly_used) < usage.weekly_cap) };
+  });
   syncMultiUnitAnswerState();
   const leadState = normalizeState(state.answers.stateInput);
   const liquidity = getRoleAnswerDollars("liquidity");
@@ -1570,6 +1590,7 @@ async function runMatching() {
       button.textContent = "Saving...";
       try {
         const result = await state.db.saveBooking({
+          request_id: button.dataset.bookingRequestId ||= crypto.randomUUID(),
           broker_name: brokerName,
           setter_name: el.setterName.value || "Unknown",
           lead_city: state.answers.city || "",
@@ -1578,7 +1599,7 @@ async function runMatching() {
         if (!result.ok) {
           button.disabled = false;
           button.textContent = originalLabel;
-          alert("Booking did not save to the server. Please try again.");
+          alert(result.error?.message || "Booking did not save to the server. Please try again.");
           return;
         }
         state.lastBooking = result.booking;

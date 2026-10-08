@@ -15,6 +15,19 @@
         <p class="subtitle">Signed in as <strong id="admin-name-display">Unknown Admin</strong></p>
       </section>
 
+      <section class="panel" id="weekly-cap-controls" aria-labelledby="weekly-cap-heading">
+        <h2 id="weekly-cap-heading">Weekly booking caps</h2>
+        <p class="subtitle">Monday–Sunday, Eastern time. All bookings count, including backups. Unbooking releases capacity.</p>
+        <form id="weekly-cap-feature-form" class="row">
+          <label class="checkbox-label" for="weekly-caps-enabled"><input id="weekly-caps-enabled" type="checkbox" disabled /> Enforce weekly caps</label>
+          <button id="weekly-cap-feature-save" type="submit" disabled>Save feature setting</button>
+          <button id="weekly-cap-refresh" type="button">Refresh usage</button>
+        </form>
+        <p id="weekly-cap-feature-status" class="subtitle" aria-live="polite">Loading weekly cap settings…</p>
+        <p id="weekly-cap-message" role="status" aria-live="polite"></p>
+        <div id="weekly-cap-table" style="overflow:auto;max-height:480px"></div>
+      </section>
+
       <section class="panel add-broker-panel">
         <h2>Add Broker</h2>
         <form id="broker-form">
@@ -93,6 +106,7 @@
         <a class="button-link" href="./index.html">Back to Main</a>
       </section>
     </main>
+    <script src="./broker-caps-admin.js" defer></script>
     <script src="./brokers.js" defer></script>
   </body>
 </html>

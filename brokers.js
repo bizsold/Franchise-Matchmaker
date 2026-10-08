@@ -378,6 +378,7 @@ async function logBookingEvent(event) {
   return !error;
 }
 
+const pendingAdminBookings = new Map();
 async function bookBrokerToday(brokerName) {
   if (!supabaseClient) return false;
   const todayEST = currentDateEST();
@@ -385,7 +386,9 @@ async function bookBrokerToday(brokerName) {
   if (bookedNames.has(brokerName)) return true;
 
   const created_at = new Date().toISOString();
+  if (!pendingAdminBookings.has(brokerName)) pendingAdminBookings.set(brokerName, crypto.randomUUID());
   const payload = {
+    request_id: pendingAdminBookings.get(brokerName),
     broker_name: brokerName,
     setter_name: "Admin",
     lead_city: "",
@@ -393,15 +396,24 @@ async function bookBrokerToday(brokerName) {
     date_est: todayEST,
     created_at
   };
-  const { error } = await supabaseClient.from("bookings").insert(payload);
+  let { data: saved, error } = await supabaseClient.from("bookings").insert(payload).select().single();
+  if (error?.code === "23505") {
+    const previous = await supabaseClient.from("bookings").select("*").eq("request_id", payload.request_id).single();
+    if (!previous.error && previous.data?.broker_name === brokerName) {
+      pendingAdminBookings.delete(brokerName);
+      return true;
+    }
+  }
+  if (!error) pendingAdminBookings.delete(brokerName);
+  if (error) alert(error.message || "Could not mark broker booked");
   await logBookingEvent({
     event_type: "booked",
     broker_name: brokerName,
     setter_name: "Admin",
-    date_est: todayEST,
+    date_est: saved?.date_est || todayEST,
     lead_city: "",
     lead_state: "",
-    booking_created_at: created_at,
+    booking_created_at: saved?.created_at || created_at,
     success: !error,
     error_message: error?.message || null,
     source: "admin_book"
@@ -1162,6 +1174,10 @@ form.addEventListener("submit", async (event) => {
   const beforeBroker = editingIndex !== null && brokers[editingIndex]
     ? JSON.parse(JSON.stringify(brokers[editingIndex]))
     : null;
+  if (beforeBroker && beforeBroker.name !== name) {
+    message.textContent = "Renaming requires moving booking history and weekly limits. Keep this broker name and contact your database administrator.";
+    return;
+  }
   // Urgent is table-only; keep the existing value when editing, default off for new brokers.
   const existingTopPriority = editingIndex !== null
     ? brokers[editingIndex]?.top_priority === true
@@ -1240,6 +1256,7 @@ form.addEventListener("submit", async (event) => {
     ensureDefaultRoster();
     await seedBrokersToSupabaseIfEmpty();
     await renderBrokers();
+    await window.BrokerCapAdmin.init({ client: supabaseClient, getAdminName });
   } catch (error) {
     brokerList.innerHTML = "<p>Unable to load broker list. Please refresh this page.</p>";
   }

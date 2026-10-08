@@ -1,5 +1,7 @@
 # Franchise Matchmaker (No-Code Friendly Build)
 
+For weekly booking cap controls, deployment status, and tests, see [WEEKLY-CAPS.md](WEEKLY-CAPS.md). Apply its database migration before publishing the updated application files.
+
 This app is a browser-based starter for your setter team with:
 - strict script-first workflow
 - button-based qualifying questions
