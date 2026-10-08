@@ -5,8 +5,10 @@
     "test": "node tests/weekly-caps.application.cjs && node tests/run-local-postgres.cjs && node tests/weekly-caps.browser.cjs"
   },
   "devDependencies": {
-    "@embedded-postgres/windows-x64": "17.6.0-beta.15",
     "pg": "8.23.1",
     "playwright": "1.64.0"
+  },
+  "optionalDependencies": {
+    "@embedded-postgres/windows-x64": "17.6.0-beta.15"
   }
 }
