@@ -20,7 +20,7 @@ The migration starts with enforcement **off** and every broker **unlimited**. Bo
 - Backend optimistic revisions reject stale admin saves. Changes to the switch and per-broker limits are audited transactionally.
 - The original timestamp is preserved for legacy clients without a request ID, keeping old undo actions working. Accounting always uses the server-owned `cap_recorded_at`. New clients save returned booking IDs and timestamps and undo by ID.
 - Request IDs prevent duplicates for retries of the same UI booking action. They are not persisted across page reloads.
-- Renaming through the form is blocked: moving booking history and saved limits requires an explicit database migration. Limits and usage survive deletion/recreation under the same broker name.
+- Safe transactional renaming was added on November 26, 2026; see [BROKER-RENAMES.md](BROKER-RENAMES.md) for deployment and safeguards. Limits and usage move with the broker; retired names cannot be recreated.
 
 ## Database implementation
 

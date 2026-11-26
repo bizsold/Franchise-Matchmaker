@@ -2,6 +2,8 @@
 
 For weekly booking cap controls, deployment status, and tests, see [WEEKLY-CAPS.md](WEEKLY-CAPS.md). Apply its database migration before publishing the updated application files.
 
+For safe broker renames and the November 26 database update, see [BROKER-RENAMES.md](BROKER-RENAMES.md). Publish the updated `brokers.js` and `broker-caps-admin.js` together.
+
 This app is a browser-based starter for your setter team with:
 - strict script-first workflow
 - button-based qualifying questions

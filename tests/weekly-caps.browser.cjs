@@ -3,9 +3,17 @@ const {chromium}=require('playwright');
 const root=path.resolve(__dirname,'..');
 const mock=`
 window.__capMock={settings:{id:true,weekly_caps_enabled:false,revision:1,updated_by:'Test Admin'},rows:[{broker_name:'Test Broker',weekly_cap:3,weekly_used:2,cap_revision:1,weekly_caps_enabled:false,resets_at:'2026-10-12T04:00:00Z'}],failFeature:false,failLoad:false};
+Object.assign(window.__capMock,{brokerName:'Test Broker',version:'2026-11-26T12:00:00Z',upserts:0,deletes:0});
 window.supabase={createClient:()=>({
- from(table){const q={select(){return q},eq(){return q},order(){return q},limit(){return q},insert(){return q},upsert(){return q},single(){q.singleRow=true;return q},then(resolve){const m=window.__capMock;const data=table==='broker_cap_settings'?m.settings:table==='brokers'?[{broker_name:'Test Broker',data:{name:'Test Broker',minLiquid:50000,minNetWorth:100000,minCredit:600,location_mode:'us_wide',location_states:[],booking:'https://example.com',requiresStatus:[]}}]:[];return Promise.resolve({data,error:table==='broker_cap_settings'&&m.failLoad?{message:'Offline'}:null}).then(resolve)}};return q},
+ from(table){const q={select(){return q},eq(){return q},order(){return q},limit(){return q},insert(){return q},delete(){window.__capMock.deletes++;return q},upsert(){window.__capMock.upserts++;return q},single(){q.singleRow=true;return q},then(resolve){const m=window.__capMock;const data=table==='broker_cap_settings'?m.settings:table==='brokers'?[{broker_name:m.brokerName,updated_at:m.version,data:{name:m.brokerName,minLiquid:50000,minNetWorth:100000,minCredit:600,location_mode:'us_wide',location_states:[],booking:'https://example.com',requiresStatus:[]}}]:[];return Promise.resolve({data,error:table==='broker_cap_settings'&&m.failLoad?{message:'Offline'}:null}).then(resolve)}};return q},
  async rpc(name,args){const m=window.__capMock;
+ if(name==='rename_broker'){
+   m.lastRename=args;
+   if(m.renameFailure)return {error:m.renameFailure};
+   if(args.p_expected_updated_at!==m.version)return {error:{code:'40001',message:'Broker changed in another session. Refresh and retry.'}};
+   m.brokerName=args.p_new_name;m.version='2026-11-26T13:00:00Z';m.rows[0].broker_name=m.brokerName;
+   return {data:{broker_name:m.brokerName,updated_at:m.version,data:args.p_data}};
+ }
  if(name==='get_broker_weekly_usage')return {data:m.rows,error:m.failLoad?{message:'Offline'}:null};
  if(name==='set_broker_cap_settings'){if(m.failFeature)return {error:{message:'Settings changed in another session. Refresh and retry.'}};m.settings={...m.settings,weekly_caps_enabled:args.p_enabled,revision:m.settings.revision+1};m.rows.forEach(r=>r.weekly_caps_enabled=args.p_enabled);return {data:m.settings};}
  if(name==='set_broker_weekly_cap'){const row=m.rows.find(r=>r.broker_name===args.p_broker_name);if(row.cap_revision!==args.p_revision)return {error:{message:'Conflict'}};row.weekly_cap=args.p_cap;row.cap_revision++;return {data:{weekly_cap:row.weekly_cap,revision:row.cap_revision}};}
@@ -42,6 +50,42 @@ window.supabase={createClient:()=>({
   await page.screenshot({path:path.join(__dirname,'../.test-work/admin-controls-desktop.png'),fullPage:false});
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:path.join(__dirname,'../.test-work/admin-controls-mobile.png'),fullPage:false});
+  const submitRename=async(name)=>{await page.locator('#broker-name').fill(name);await page.locator('#save-broker-btn').click();};
+  await check('rename failure preserves form and cached roster',async()=>{
+    await page.locator('.edit-btn').click();
+    await page.evaluate(()=>window.__capMock.renameFailure={code:'23505',message:'That name already exists'});
+    await submitRename('New Broker');
+    await page.waitForFunction(()=>document.getElementById('broker-form-message').textContent.startsWith('Not saved:'));
+    assert.equal(await page.locator('#broker-name').inputValue(),'New Broker');
+    assert.equal(await page.evaluate(()=>readBrokers()[0].name),'Test Broker');
+    assert.equal(await page.locator('#save-broker-btn').isDisabled(),false);
+  });
+  await check('missing migration gives actionable error without local rename',async()=>{
+    await page.evaluate(()=>window.__capMock.renameFailure={code:'PGRST202'});
+    await submitRename('New Broker');
+    await page.waitForFunction(()=>document.getElementById('broker-form-message').textContent.includes('database update'));
+    assert.equal(await page.evaluate(()=>readBrokers()[0].name),'Test Broker');
+  });
+  await check('stale editor retains original revision despite background refresh',async()=>{
+    await page.evaluate(async()=>{window.__capMock.renameFailure=null;window.__capMock.version='2026-11-26T12:30:00Z';await renderBrokers();});
+    await submitRename('New Broker');
+    await page.waitForFunction(()=>document.getElementById('broker-form-message').textContent.includes('another session'));
+    assert.equal(await page.evaluate(()=>window.__capMock.lastRename.p_expected_updated_at),'2026-11-26T12:00:00Z');
+  });
+  await check('successful rename uses one RPC, updates cache and refreshes weekly reporting',async()=>{
+    await page.locator('.edit-btn').click();
+    const baseline=await page.evaluate(()=>({upserts:window.__capMock.upserts,deletes:window.__capMock.deletes}));
+    await page.evaluate(()=>{writeFocusDraft({'Test Broker':'morning'});setFocusDraftDirty(true);});
+    await submitRename('New Broker');
+    await page.waitForFunction(()=>document.querySelector('[data-cap-input]').getAttribute('aria-label')==='Weekly limit for New Broker');
+    assert.equal(await page.evaluate(()=>readBrokers()[0].name),'New Broker');
+    assert.equal(await page.evaluate(()=>readFocusDraft()['New Broker']),'morning');
+    assert.equal(await page.evaluate(()=>readFocusDraft()['Test Broker']),undefined);
+    assert.deepEqual(await page.evaluate(()=>({upserts:window.__capMock.upserts,deletes:window.__capMock.deletes})),baseline);
+    assert.equal(await page.evaluate(()=>window.__capMock.lastRename.p_data._updatedAt),undefined);
+    assert.equal(await page.locator('#broker-name').inputValue(),'');
+    assert.equal(await page.evaluate(()=>window.__capMock.rows[0].weekly_used),2);
+  });
   await check('load failure disables writes',async()=>{await page.evaluate(()=>window.__capMock.failLoad=true);await page.locator('#weekly-cap-refresh').click();await page.waitForFunction(()=>document.getElementById('weekly-cap-message').textContent.includes('Could not load'));assert.equal(await page.locator('#weekly-cap-feature-save').isDisabled(),true);assert.equal(await page.locator('[data-cap-save]').isDisabled(),true);});
   assert.deepEqual(errors,[]);console.log(`${passed} browser tests passed; no page errors.`);
  }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));}

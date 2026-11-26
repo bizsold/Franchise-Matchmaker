@@ -90,6 +90,7 @@ const cancelEditBtn = document.getElementById("cancel-edit-btn");
 const saveFocusListBtn = document.getElementById("save-focus-list-btn");
 const adminNameDisplay = document.getElementById("admin-name-display");
 let editingIndex = null;
+let editingBroker = null;
 const supabaseClient = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 function getAdminName() {
@@ -284,7 +285,7 @@ async function setBrokerHardLockInSupabase(brokerName, hardLocked) {
 
 function brokerToSupabaseRow(broker) {
   // focus_today and hard_locked live in their own tables, not the brokers row.
-  const { focus_today, hard_locked, ...rest } = broker;
+  const { focus_today, hard_locked, _updatedAt, ...rest } = broker;
   return {
     broker_name: broker.name,
     data: rest,
@@ -294,7 +295,7 @@ function brokerToSupabaseRow(broker) {
 
 function supabaseRowToBroker(row) {
   if (!row || !row.data) return null;
-  return normalizeBrokerLocation({ ...row.data, name: row.broker_name });
+  return normalizeBrokerLocation({ ...row.data, name: row.broker_name, _updatedAt: row.updated_at });
 }
 
 async function fetchBrokersFromSupabase() {
@@ -302,7 +303,7 @@ async function fetchBrokersFromSupabase() {
   try {
     const { data, error } = await supabaseClient
       .from("brokers")
-      .select("broker_name, data")
+      .select("broker_name, data, updated_at")
       .order("broker_name");
     if (error || !Array.isArray(data)) return null;
     return data.map(supabaseRowToBroker).filter(Boolean);
@@ -318,6 +319,28 @@ async function upsertBrokerToSupabase(broker) {
     .from("brokers")
     .upsert(row, { onConflict: "broker_name" });
   return { ok: !error, error };
+}
+
+async function renameBrokerInSupabase(before, broker) {
+  if (!supabaseClient || !before._updatedAt) {
+    return { ok: false, error: { message: "Refresh the page to load the broker before renaming." } };
+  }
+  try {
+    const { data, error } = await supabaseClient.rpc("rename_broker", {
+      p_old_name: before.name,
+      p_new_name: broker.name,
+      p_data: brokerToSupabaseRow(broker).data,
+      p_expected_updated_at: before._updatedAt,
+      p_admin_name: getAdminName()
+    });
+    if (error) return { ok: false, error };
+    if (!data || data.broker_name !== broker.name) {
+      return { ok: false, error: { message: "Could not confirm the rename. Refresh before retrying." } };
+    }
+    return { ok: true, broker: supabaseRowToBroker(data) };
+  } catch (error) {
+    return { ok: false, error };
+  }
 }
 
 async function deleteBrokerFromSupabase(brokerName) {
@@ -846,6 +869,7 @@ function getSelectedLocationCodes() {
 
 function fillFormForEdit(broker, index) {
   editingIndex = index;
+  editingBroker = JSON.parse(JSON.stringify(broker));
   document.getElementById("broker-name").value = broker.name || "";
   document.getElementById("min-liquid").value = broker.minLiquid || 0;
   document.getElementById("min-net-worth").value = broker.minNetWorth || 0;
@@ -1171,16 +1195,10 @@ form.addEventListener("submit", async (event) => {
   }
 
   const brokers = readBrokers();
-  const beforeBroker = editingIndex !== null && brokers[editingIndex]
-    ? JSON.parse(JSON.stringify(brokers[editingIndex]))
-    : null;
-  if (beforeBroker && beforeBroker.name !== name) {
-    message.textContent = "Renaming requires moving booking history and weekly limits. Keep this broker name and contact your database administrator.";
-    return;
-  }
+  const beforeBroker = editingIndex !== null ? editingBroker : null;
   // Urgent is table-only; keep the existing value when editing, default off for new brokers.
   const existingTopPriority = editingIndex !== null
-    ? brokers[editingIndex]?.top_priority === true
+    ? beforeBroker?.top_priority === true
     : false;
   const payload = {
     name,
@@ -1210,18 +1228,49 @@ form.addEventListener("submit", async (event) => {
     brokers.push(payload);
     savedBroker = payload;
   } else {
-    previousName = brokers[editingIndex]?.name || null;
-    brokers[editingIndex] = { ...brokers[editingIndex], ...payload };
+    previousName = beforeBroker?.name || null;
+    editingIndex = brokers.findIndex((b) => b.name === previousName);
+    if (editingIndex < 0) {
+      message.textContent = "Broker changed in another session. Refresh and reopen the editor.";
+      return;
+    }
+    brokers[editingIndex] = { ...beforeBroker, ...payload };
     savedBroker = brokers[editingIndex];
   }
 
   // Supabase is the source of truth; write there first, then update the local cache.
-  const upsertResult = await upsertBrokerToSupabase(savedBroker);
-  if (previousName && previousName !== name) {
-    await deleteBrokerFromSupabase(previousName);
+  const isRename = previousName && previousName !== name;
+  saveBrokerBtn.disabled = true;
+  let upsertResult;
+  try {
+    upsertResult = isRename
+      ? await renameBrokerInSupabase(beforeBroker, savedBroker)
+      : await upsertBrokerToSupabase(savedBroker);
+  } catch (error) {
+    upsertResult = { ok: false, error };
+  } finally {
+    saveBrokerBtn.disabled = false;
+  }
+  if (!upsertResult.ok) {
+    const missingMigration = upsertResult.error?.code === "PGRST202";
+    message.textContent = missingMigration
+      ? "Not saved. Broker renaming needs the database update installed first."
+      : upsertResult.error?.code === "55P03"
+        ? "Not saved. A booking or broker update is in progress. Please retry shortly."
+        : `Not saved: ${upsertResult.error?.message || "Check your connection and retry."}`;
+    return;
+  }
+  if (isRename) {
+    brokers[editingIndex] = { ...savedBroker, ...upsertResult.broker };
+    const draft = readFocusDraft();
+    if (draft && Object.prototype.hasOwnProperty.call(draft, previousName)) {
+      draft[name] = draft[previousName];
+      delete draft[previousName];
+      writeFocusDraft(draft);
+    }
   }
   saveBrokers(brokers);
-  if (upsertResult.ok) {
+  if (!isRename) {
     await writeBrokerAuditLog({
       action: beforeBroker ? "broker_criteria_edited" : "broker_added",
       brokerName: savedBroker.name,
@@ -1239,10 +1288,9 @@ form.addEventListener("submit", async (event) => {
   locationModeSelect.value = "us_wide";
   updateLocationPicker([]);
   renderIndustryExclusionsPicker([]);
-  message.textContent = upsertResult.ok
-    ? `${name} saved to master broker database.`
-    : `${name} saved locally, but Supabase sync failed. Check network or that the brokers table exists.`;
+  message.textContent = `${name} saved to master broker database.`;
   await renderBrokers();
+  if (isRename) await window.BrokerCapAdmin.refresh();
 });
 
 (async () => {

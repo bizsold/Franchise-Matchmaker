@@ -83,5 +83,5 @@ window.BrokerCapAdmin = (() => {
     byId('weekly-cap-table').addEventListener('click',saveLimit);
     await load();
   }
-  return {init};
+  return {init, refresh: load};
 })();

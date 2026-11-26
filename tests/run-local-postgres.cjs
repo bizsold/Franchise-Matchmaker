@@ -31,9 +31,18 @@ const {Client}=require('pg');
   CREATE POLICY brokers_anon ON public.brokers FOR ALL TO anon USING(true) WITH CHECK(true);
   GRANT ALL ON public.bookings,public.brokers TO anon;GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO anon;
   INSERT INTO public.brokers(broker_name,data) VALUES('Test','{}'),('Unlimited','{}');
-  INSERT INTO public.bookings(broker_name,date_est,created_at) VALUES('Old roster name','2025-12-31','2025-12-31T20:00:00Z');`);
+  INSERT INTO public.bookings(broker_name,date_est,created_at) VALUES('Old roster name','2025-12-31','2025-12-31T20:00:00Z'),('Rename historical fixture','2025-12-31','2025-12-31T20:00:00Z');`);
   await db.query(fs.readFileSync(path.join(root,'supabase/migrations/20261008203016_weekly_broker_cap_controls.sql'),'utf8'));
   await require('./weekly-caps.integration.cjs')(db,connect);
+  await db.query(`
+    CREATE TABLE public.broker_focus(broker_name text PRIMARY KEY,focus_today boolean,updated_at timestamptz DEFAULT now());
+    CREATE TABLE public.broker_locks(broker_name text PRIMARY KEY,hard_locked boolean,updated_at timestamptz DEFAULT now());
+    CREATE TABLE public.booking_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),broker_name text,event_type text,event_at timestamptz DEFAULT now());
+    GRANT SELECT, INSERT ON public.broker_audit_log TO anon;
+    GRANT SELECT, INSERT, UPDATE ON public.broker_focus,public.broker_locks,public.booking_events TO anon;
+  `);
+  await db.query(fs.readFileSync(path.join(root,'supabase/migrations/20261126143442_broker_atomic_rename.sql'),'utf8'));
+  await require('./broker-rename.integration.cjs')(db,connect);
  }finally{
   if(db)await db.end();
   if(admin){if(created)await admin.query(`DROP DATABASE ${name}`);await admin.end();}
